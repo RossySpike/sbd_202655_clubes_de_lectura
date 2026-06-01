@@ -170,6 +170,7 @@ CREATE TABLE libro(
   total_paginas NUMBER NOT NULL,
   id_pais NUMBER(3) NOT NULL,
   id_libro_siguiente VARCHAR2(20),
+  CONSTRAINT libro_total_paginas_validas CHECK (total_paginas > 0),
   CONSTRAINT libro_tipo_narrativa_ck CHECK (tipo_narrativa IN ('novela','cuento','mito','leyenda','fabula','epopeya')),
   CONSTRAINT libro_idioma_fk_pais FOREIGN KEY ( id_pais ) REFERENCES pais(id_pais),
   CONSTRAINT libro_fk_libro_siguiente FOREIGN KEY ( id_libro_siguiente ) REFERENCES libro(isbn)
@@ -177,11 +178,11 @@ CREATE TABLE libro(
 
 
 CREATE TABLE libro_autor(
-id_autor NUMBER NOT NULL,
-isbn VARCHAR2(20) NOT NULL,
-CONSTRAINT libro_autor_pk PRIMARY KEY (id_autor, isbn),
-CONSTRAINT libro_autor_fk_autor FOREIGN KEY ( id_autor ) REFERENCES autor(id_autor),
-CONSTRAINT libro_autor_fk_libro FOREIGN KEY ( isbn ) REFERENCES libro(isbn)
+  id_autor NUMBER NOT NULL,
+  isbn VARCHAR2(20) NOT NULL,
+  CONSTRAINT libro_autor_pk PRIMARY KEY (id_autor, isbn),
+  CONSTRAINT libro_autor_fk_autor FOREIGN KEY ( id_autor ) REFERENCES autor(id_autor),
+  CONSTRAINT libro_autor_fk_libro FOREIGN KEY ( isbn ) REFERENCES libro(isbn)
 );
 
 
