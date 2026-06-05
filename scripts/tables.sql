@@ -2,6 +2,7 @@
 CREATE SEQUENCE seq_pais START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE pais(
   id_pais NUMBER(3) DEFAULT seq_pais.NEXTVAL PRIMARY KEY, -- 195 paises en el mundo maso
   nombre_pais VARCHAR2(100) NOT NULL,
@@ -13,6 +14,7 @@ CREATE TABLE pais(
 CREATE SEQUENCE seq_ciudad START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 -- NOTE: el NOT NULL es implicito por el CONSTRAINT, se pone para no ser ambiguo
 CREATE TABLE ciudad(
   id_pais NUMBER(3) NOT NULL,
@@ -26,6 +28,7 @@ CREATE TABLE ciudad(
 CREATE SEQUENCE seq_institucion START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE institucion(
   id_pais NUMBER(3) NOT NULL,
   id_ciudad NUMBER(3) NOT NULL,
@@ -41,6 +44,7 @@ CREATE TABLE institucion(
 CREATE SEQUENCE seq_idioma START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE idioma(
   id_idioma NUMBER(3) DEFAULT seq_idioma.NEXTVAL PRIMARY KEY,
   nombre_idioma VARCHAR2(100) NOT NULL -- NOTE: en el ER idioma no tiene el '*'
@@ -50,6 +54,7 @@ CREATE TABLE idioma(
 CREATE SEQUENCE seq_club START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE club(
   id_club NUMBER DEFAULT seq_club.NEXTVAL PRIMARY KEY,
   nombre_club VARCHAR2(100) NOT NULL,
@@ -58,6 +63,7 @@ CREATE TABLE club(
   CONSTRAINT club_ck_cuota CHECK (cuota_anual IN ('S', 'N'))
 );
 
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE asociado(
   id_club_izq NUMBER NOT NULL,
   id_club_der NUMBER NOT NULL,
@@ -71,6 +77,7 @@ CREATE TABLE asociado(
 CREATE SEQUENCE seq_representante START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE representante(
   id_representante NUMBER DEFAULT seq_representante.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) NOT NULL,
@@ -83,6 +90,7 @@ CREATE TABLE representante(
 CREATE SEQUENCE seq_lector START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE lector(
   id_lector NUMBER DEFAULT seq_lector.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) NOT NULL,
@@ -132,6 +140,7 @@ END;
 CREATE SEQUENCE seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE idioma_miembro(
   id_idioma NUMBER(3) NOT NULL,
   id_idioma_miembro NUMBER DEFAULT seq_idioma_miembro.NEXTVAL NOT NULL,
@@ -153,6 +162,7 @@ CREATE TABLE idioma_miembro(
 
 CREATE SEQUENCE seq_autor START WITH 1 INCREMENT BY 1 NOCYCLE;
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE autor(
   id_autor NUMBER DEFAULT seq_autor.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) ,
@@ -160,6 +170,7 @@ CREATE TABLE autor(
   nombre_ant_pseudonimo VARCHAR2(20)
 );
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE libro(
   isbn VARCHAR2(20) PRIMARY KEY,  -- https:/es.wikipedia.org/wiki/ISBN#El_ISBN_de_trece_d%C3%ADgitos
   titulo VARCHAR2(100) NOT NULL,
@@ -176,6 +187,7 @@ CREATE TABLE libro(
 );
 
 
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE libro_autor(
 id_autor NUMBER NOT NULL,
 isbn VARCHAR2(20) NOT NULL,
@@ -187,6 +199,7 @@ CONSTRAINT libro_autor_fk_libro FOREIGN KEY ( isbn ) REFERENCES libro(isbn)
 
 CREATE SEQUENCE seq_grupo START WITH 1 INCREMENT BY 1 NOCYCLE;
 
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE grupo (
   id_grupo NUMBER DEFAULT seq_grupo.NEXTVAL PRIMARY KEY,
   tipo_grupo VARCHAR2(10) NOT NULL,
