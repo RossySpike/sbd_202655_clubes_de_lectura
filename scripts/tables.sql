@@ -188,7 +188,7 @@ CREATE TABLE grupo (
   CONSTRAINT grupo_ck_tipo CHECK (tipo_grupo IN ('adultos','jovenes','niños')),
   CONSTRAINT grupo_ck_dia_permitido CHECK ((dia_reunion > 1) AND (dia_reunion<7)),
   CONSTRAINT grupo_ck_hora_reunion CHECK (TO_CHAR(hora_reunion, 'SS')='00'),
-  CONSTRAINT grupo_ck_hora_permitida CHECK (TO_CHAR(hora_reunion, 'HH24:MI') BETWEEN '17:00' AND '19:00') -- NOTE: Aqui no se si las 7 es hora maxima y ya nadie puede estar o es entre esta franja que pueden iniciar las reuniones, creo que es la ultima porque dice que los grupos de niños no pueden terminar despues de las 7
+  CONSTRAINT grupo_ck_hora_permitida CHECK (TO_CHAR(hora_reunion, 'HH24:MI') BETWEEN '17:00' AND '19:00'), -- NOTE: Aqui no se si las 7 es hora maxima y ya nadie puede estar o es entre esta franja que pueden iniciar las reuniones, creo que es la ultima porque dice que los grupos de niños no pueden terminar despues de las 7
   CONSTRAINT grupo_fk_club FOREIGN KEY (id_club) REFERENCES club(id_club)
 );
 
