@@ -4,7 +4,7 @@ CREATE SEQUENCE MJV_seq_pais START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE MJV_pais(
-  id_pais NUMBER(3) DEFAULT seq_pais.NEXTVAL PRIMARY KEY, -- 195 paises en el mundo maso
+  id_pais NUMBER(3) DEFAULT MJV_seq_pais.NEXTVAL PRIMARY KEY, -- 195 paises en el mundo maso
   nombre_pais VARCHAR2(100) NOT NULL,
   moneda_local VARCHAR2(3) NOT NULL, -- (Codigos ISO) USD, VES, COP, etc.
   nacionalidad VARCHAR2(100) NOT NULL UNIQUE
@@ -18,7 +18,7 @@ CREATE SEQUENCE MJV_seq_ciudad START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 -- NOTE: el NOT NULL es implicito por el CONSTRAINT, se pone para no ser ambiguo
 CREATE TABLE MJV_ciudad(
   id_pais NUMBER(3) NOT NULL,
-  id_ciudad NUMBER(3) DEFAULT seq_ciudad.NEXTVAL,
+  id_ciudad NUMBER(3) DEFAULT MJV_seq_ciudad.NEXTVAL,
   nombre_ciudad VARCHAR2(100) NOT NULL,
  CONSTRAINT MJV_ciudad_pk PRIMARY KEY (id_pais, id_ciudad),
  CONSTRAINT MJV_ciudad_fk_pais FOREIGN KEY (id_pais) REFERENCES MJV_pais(id_pais)
@@ -32,7 +32,7 @@ CREATE SEQUENCE MJV_seq_institucion START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOC
 CREATE TABLE MJV_institucion(
   id_pais NUMBER(3) NOT NULL,
   id_ciudad NUMBER(3) NOT NULL,
-  id_institucion NUMBER(3) DEFAULT seq_institucion.NEXTVAL NOT NULL,
+  id_institucion NUMBER(3) DEFAULT MJV_seq_institucion.NEXTVAL NOT NULL,
   nombre_inst VARCHAR2(100) NOT NULL,
   tipo VARCHAR2(12) NOT NULL,
  CONSTRAINT MJV_institucion_pk PRIMARY KEY (id_pais, id_ciudad, id_institucion),
@@ -46,7 +46,7 @@ CREATE SEQUENCE MJV_seq_idioma START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE MJV_idioma(
-  id_idioma NUMBER(3) DEFAULT seq_idioma.NEXTVAL PRIMARY KEY,
+  id_idioma NUMBER(3) DEFAULT MJV_seq_idioma.NEXTVAL PRIMARY KEY,
   nombre_idioma VARCHAR2(100) NOT NULL -- NOTE: en el ER idioma no tiene el '*'
 );
 
@@ -56,7 +56,7 @@ CREATE SEQUENCE MJV_seq_club START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE MJV_club(
-  id_club NUMBER DEFAULT seq_club.NEXTVAL PRIMARY KEY,
+  id_club NUMBER DEFAULT MJV_seq_club.NEXTVAL PRIMARY KEY,
   nombre_club VARCHAR2(100) NOT NULL,
   cuota_anual CHAR(1) NOT NULL, -- Con una vista se puede pasar a SiNo
   cod_postal VARCHAR2(20) NOT NULL, -- Hay paises con ceros a la izquierda o letras, maximo 11 caracteres (Iran)
@@ -86,7 +86,7 @@ CREATE SEQUENCE MJV_seq_representante START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE MJV_representante(
-  id_representante NUMBER DEFAULT seq_representante.NEXTVAL PRIMARY KEY,
+  id_representante NUMBER DEFAULT MJV_seq_representante.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) NOT NULL,
   p_apellido VARCHAR2(20) NOT NULL,
   doc_identidad VARCHAR2(20) NOT NULL,
@@ -99,7 +99,7 @@ CREATE SEQUENCE MJV_seq_lector START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE MJV_lector(
-  id_lector NUMBER DEFAULT seq_lector.NEXTVAL PRIMARY KEY,
+  id_lector NUMBER DEFAULT MJV_seq_lector.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) NOT NULL,
   p_apellido VARCHAR2(20) NOT NULL,
   s_apellido VARCHAR2(20) NOT NULL,
@@ -128,7 +128,7 @@ CREATE SEQUENCE MJV_seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE MJV_idioma_miembro(
   id_idioma NUMBER(3) NOT NULL,
-  id_idioma_miembro NUMBER DEFAULT seq_idioma_miembro.NEXTVAL NOT NULL,
+  id_idioma_miembro NUMBER DEFAULT MJV_seq_idioma_miembro.NEXTVAL NOT NULL,
   tipo CHAR(1) NOT NULL, -- 'L' = Lector, 'C' = Club
   id_club NUMBER,
   id_lector NUMBER,
@@ -149,7 +149,7 @@ CREATE SEQUENCE MJV_seq_autor START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE MJV_autor(
-  id_autor NUMBER DEFAULT seq_autor.NEXTVAL PRIMARY KEY,
+  id_autor NUMBER DEFAULT MJV_seq_autor.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) ,
   p_apellido VARCHAR2(20) ,
   nombre_ant_pseudonimo VARCHAR2(20)
@@ -187,7 +187,7 @@ CREATE SEQUENCE MJV_seq_grupo START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE MJV_grupo (
-  id_grupo        NUMBER DEFAULT seq_grupo.NEXTVAL NOT NULL,
+  id_grupo        NUMBER DEFAULT MJV_seq_grupo.NEXTVAL NOT NULL,
   id_club         NUMBER NOT NULL,
   tipo_grupo      VARCHAR2(10) NOT NULL,
   fecha_creacion  DATE NOT NULL,
@@ -223,7 +223,7 @@ CREATE SEQUENCE MJV_seq_voto_publico START WITH 1 INCREMENT BY 1 NOCYCLE;
 -- TIPO DE ENTIDAD: Entrada (E)
 -- Depende de: libro, club
 CREATE TABLE MJV_obra_actuada(
-  id_obra_act NUMBER DEFAULT seq_obra_actuada.NEXTVAL NOT NULL,
+  id_obra_act NUMBER DEFAULT MJV_seq_obra_actuada.NEXTVAL NOT NULL,
   titulo VARCHAR2(200) NOT NULL,
   activo CHAR(1) NOT NULL, -- 'S' = activa, 'N' = inactiva
   costo_entrada NUMBER(10, 2), -- NULL si no cobra entrada
@@ -352,7 +352,7 @@ CREATE TABLE MJV_pago_membresia(
   id_lector NUMBER NOT NULL,
   id_club NUMBER NOT NULL,
   fecha_i DATE NOT NULL,
-  id_pago NUMBER DEFAULT seq_pago_membresia.NEXTVAL NOT NULL,
+  id_pago NUMBER DEFAULT MJV_seq_pago_membresia.NEXTVAL NOT NULL,
   fecha_pago DATE NOT NULL,
   monto NUMBER(10, 2) NOT NULL,
  CONSTRAINT MJV_pago_membresia_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_pago),
@@ -388,7 +388,7 @@ fecha_reunion -- PK inasistencia
 -- Depende de: obra_actuada
 -- NOTE: valoracion_obra se calcula como promedio de voto_publico al cerrar la funcion
 CREATE TABLE MJV_funcion(
-  id_funcion NUMBER DEFAULT seq_funcion.NEXTVAL NOT NULL,
+  id_funcion NUMBER DEFAULT MJV_seq_funcion.NEXTVAL NOT NULL,
   id_obra_act NUMBER NOT NULL,
   isbn VARCHAR2(20) NOT NULL,
   id_club NUMBER NOT NULL,
@@ -412,7 +412,7 @@ id_obra_act,isbn,id_club -- PK obra_actuada
 -- Depende de: funcion
 -- NOTE: el publico vota por el mejor actor y califica la obra; pueden haber empates en mejor actor
 CREATE TABLE MJV_voto_publico(
-  id_voto NUMBER DEFAULT seq_voto_publico.NEXTVAL PRIMARY KEY,
+  id_voto NUMBER DEFAULT MJV_seq_voto_publico.NEXTVAL PRIMARY KEY,
   id_funcion NUMBER NOT NULL,
   id_obra_act NUMBER NOT NULL,
   isbn VARCHAR2(20) NOT NULL,
