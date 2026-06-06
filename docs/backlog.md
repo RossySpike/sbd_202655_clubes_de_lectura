@@ -137,19 +137,19 @@ Para optimizar las consultas y evitar bloqueos en el motor relacional Oracle, se
 
 ### 5. Funciones PL/SQL o Equivalentes
 
-- [ ] **`conversion_monetaria()`**
+- [X] **`conversion_monetaria()`**
   * **Propósito:** Convierte importes locales a dólares americanos (`USD`) como referencia unificada.
   * **Entrada:** `p_monto` (`NUMBER`), `p_moneda_origen` (`VARCHAR2`), `p_moneda_destino` (`VARCHAR2`), `p_fecha` (`DATE` por defecto `SYSDATE`).
   * **Retorno:** `NUMBER` (monto convertido).
-- [ ] **`edad_miembro()` / `antiguedad_en_club_miembro()`**
+- [X] **`edad_miembro()` / `antiguedad_en_club_miembro()`**
   * **Propósito:** Calcular edad o tiempo de permanencia del lector en un club.
   * **Entrada:** `p_id_lector` (`NUMBER`) para edad; `p_id_lector` (`NUMBER`) y `p_id_club` (`NUMBER`) para antigüedad.
   * **Retorno:** `NUMBER` (representa años para edad, y meses/años para antigüedad).
-- [ ] **`promedio_part_mensual_tipo_grupo()`**
+- [X] **`promedio_part_mensual_tipo_grupo()`**
   * **Propósito:** Porcentaje de asistencia promedio en reuniones mensuales por categoría de grupo.
   * **Entrada:** `p_id_club` (`NUMBER`), `p_tipo_grupo` (`VARCHAR2`), `p_mes` (`NUMBER`), `p_anio` (`NUMBER`).
   * **Retorno:** `NUMBER` (porcentaje de 0.00 a 100.00).
-- [ ] **`participacion_bimestre_miembro()`**
+- [X] **`participacion_bimestre_miembro()`**
   * **Propósito:** Porcentaje de asistencia de un lector en un bimestre específico.
   * **Entrada:** `p_id_lector` (`NUMBER`), `p_id_club` (`NUMBER`), `p_bimestre` (`NUMBER`), `p_anio` (`NUMBER`).
   * **Retorno:** `NUMBER` (porcentaje de 0.00 a 100.00).
