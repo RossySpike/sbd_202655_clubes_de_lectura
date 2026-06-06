@@ -64,8 +64,8 @@ CREATE TABLE MJV_club(
   id_ciudad NUMBER(3) NOT NULL,
   id_pais NUMBER(3) NOT NULL,
   id_institucion NUMBER(3),
-CONSTRAINT club_fk_ciudad FOREIGN KEY (id_pais, id_ciudad ) REFERENCES MJV_ciudad( id_pais, id_ciudad),
-CONSTRAINT club_fk_institucion FOREIGN KEY (id_pais, id_ciudad, id_institucion) 
+CONSTRAINT MJV_club_fk_ciudad FOREIGN KEY (id_pais, id_ciudad ) REFERENCES MJV_ciudad( id_pais, id_ciudad),
+CONSTRAINT MJV_club_fk_institucion FOREIGN KEY (id_pais, id_ciudad, id_institucion) 
     REFERENCES MJV_institucion(id_pais, id_ciudad, id_institucion),
  CONSTRAINT MJV_club_ck_cuota CHECK (cuota_anual IN ('S', 'N'))
 );
@@ -308,7 +308,7 @@ CREATE TABLE MJV_calendario_reunion_mes(
  CONSTRAINT MJV_calendario_reunion_mes_pk PRIMARY KEY (id_grupo, id_club,fecha,isbn),
  CONSTRAINT MJV_calendario_reunion_mes_fk_grupo FOREIGN KEY (id_grupo,id_club) REFERENCES MJV_grupo(id_grupo, id_club),
  CONSTRAINT MJV_calendario_reunion_mes_fk_libro FOREIGN KEY (isbn) REFERENCES MJV_libro(isbn),
-CONSTRAINT calendario_reunion_mes_fk_g_lec FOREIGN KEY (mod_id_lector, id_club, mod_fecha_i, id_grupo, mod_hist_fecha_i) REFERENCES MJV_g_lec( id_lector, id_club, fecha_i, id_grupo, fec_i ),
+CONSTRAINT MJV_calendario_reunion_mes_fk_g_lec FOREIGN KEY (mod_id_lector, id_club, mod_fecha_i, id_grupo, mod_hist_fecha_i) REFERENCES MJV_g_lec( id_lector, id_club, fecha_i, id_grupo, fec_i ),
 -- ==============================================
 -- WARNING: no esta en el er (va para g_lec)
   --CONSTRAINT MJV_calendario_reunion_mes_fk_mod FOREIGN KEY (mod_id_lector, mod_id_club, mod_fecha_i) REFERENCES MJV_historia_membresia(id_lector, id_club, fecha_i),
@@ -340,8 +340,8 @@ CREATE TABLE MJV_elenco(
 --  va para obra_actuada y lector no historia_membresia
   --CONSTRAINT MJV_elenco_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES MJV_historia_membresia(id_lector, id_club, fecha_i),
 -- ==============================================
-CONSTRAINT elenco_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector(id_lector),
-CONSTRAINT elenco_fk_obra  FOREIGN KEY (id_obra_act, isbn, id_club) REFERENCES MJV_obra_actuada(id_obra_act, isbn, id_club)
+ CONSTRAINT MJV_elenco_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector(id_lector),
+ CONSTRAINT MJV_elenco_fk_obra  FOREIGN KEY (id_obra_act, isbn, id_club) REFERENCES MJV_obra_actuada(id_obra_act, isbn, id_club)
 );
 
 
@@ -356,7 +356,7 @@ CREATE TABLE MJV_pago_membresia(
   fecha_pago DATE NOT NULL,
   monto NUMBER(10, 2) NOT NULL,
  CONSTRAINT MJV_pago_membresia_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_pago),
-CONSTRAINT pago_membresia_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector (id_lector),
+ CONSTRAINT MJV_pago_membresia_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector (id_lector),
  CONSTRAINT MJV_pago_membresia_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES MJV_historia_membresia(id_lector, id_club, fecha_i)
 
 );
@@ -400,7 +400,7 @@ CREATE TABLE MJV_funcion(
 -- ==============================================
   valoracion_obra NUMBER(3, 2), -- promedio de calificaciones del publico (1-5)
   cantidad_asistencia NUMBER NOT NULL,
-CONSTRAINT funcion_pk PRIMARY KEY (id_funcion, -- PK funcion
+ CONSTRAINT MJV_funcion_pk PRIMARY KEY (id_funcion, -- PK funcion
 id_obra_act,isbn,id_club -- PK obra_actuada
 ),
  CONSTRAINT MJV_funcion_fk_obra FOREIGN KEY (id_obra_act,isbn,id_club) REFERENCES MJV_obra_actuada(id_obra_act,isbn,id_club),
@@ -420,7 +420,7 @@ CREATE TABLE MJV_voto_publico(
 id_lector  NUMBER NOT NULL,
   calificacion_obra NUMBER(1) NOT NULL, -- estrellas: 1 a 5
  CONSTRAINT MJV_voto_publico_fk_funcion FOREIGN KEY (id_funcion,id_obra_act,isbn,id_club) REFERENCES MJV_funcion(id_funcion,id_obra_act,isbn,id_club),
-CONSTRAINT voto_publico_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector(id_lector),
+ CONSTRAINT MJV_voto_publico_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector(id_lector),
  CONSTRAINT MJV_voto_publico_ck_cal CHECK (calificacion_obra BETWEEN 1 AND 5)
 );
 
