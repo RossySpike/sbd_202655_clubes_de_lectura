@@ -2,6 +2,7 @@
 CREATE SEQUENCE seq_pais START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE pais(
   id_pais NUMBER(3) DEFAULT seq_pais.NEXTVAL PRIMARY KEY, -- 195 paises en el mundo maso
   nombre_pais VARCHAR2(100) NOT NULL,
@@ -13,6 +14,7 @@ CREATE TABLE pais(
 CREATE SEQUENCE seq_ciudad START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 -- NOTE: el NOT NULL es implicito por el CONSTRAINT, se pone para no ser ambiguo
 CREATE TABLE ciudad(
   id_pais NUMBER(3) NOT NULL,
@@ -26,6 +28,7 @@ CREATE TABLE ciudad(
 CREATE SEQUENCE seq_institucion START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE institucion(
   id_pais NUMBER(3) NOT NULL,
   id_ciudad NUMBER(3) NOT NULL,
@@ -41,6 +44,7 @@ CREATE TABLE institucion(
 CREATE SEQUENCE seq_idioma START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE idioma(
   id_idioma NUMBER(3) DEFAULT seq_idioma.NEXTVAL PRIMARY KEY,
   nombre_idioma VARCHAR2(100) NOT NULL -- NOTE: en el ER idioma no tiene el '*'
@@ -50,6 +54,7 @@ CREATE TABLE idioma(
 CREATE SEQUENCE seq_club START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE club(
   id_club NUMBER DEFAULT seq_club.NEXTVAL PRIMARY KEY,
   nombre_club VARCHAR2(100) NOT NULL,
@@ -58,6 +63,7 @@ CREATE TABLE club(
   CONSTRAINT club_ck_cuota CHECK (cuota_anual IN ('S', 'N'))
 );
 
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE asociado(
   id_club_izq NUMBER NOT NULL,
   id_club_der NUMBER NOT NULL,
@@ -71,6 +77,7 @@ CREATE TABLE asociado(
 CREATE SEQUENCE seq_representante START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE representante(
   id_representante NUMBER DEFAULT seq_representante.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) NOT NULL,
@@ -83,6 +90,7 @@ CREATE TABLE representante(
 CREATE SEQUENCE seq_lector START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE lector(
   id_lector NUMBER DEFAULT seq_lector.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) NOT NULL,
@@ -93,12 +101,14 @@ CREATE TABLE lector(
   email VARCHAR2(100) NOT NULL,
   genero CHAR(1) NOT NULL,
   fecha_nac DATE NOT NULL,
+  id_pais_nac NUMBER(3) NOT NULL,
   s_nombre VARCHAR2(20),
   id_representante NUMBER,
   id_representante_lector NUMBER,
   CONSTRAINT lector_ck_genero CHECK (genero IN ('F', 'M')),
   CONSTRAINT lector_fk_representante FOREIGN KEY (id_representante) REFERENCES representante(id_representante),
   CONSTRAINT lector_fk_representante_lector FOREIGN KEY (id_representante_lector) REFERENCES lector(id_lector),
+  CONSTRAINT lector_fk_pais_nac FOREIGN KEY (id_pais_nac) REFERENCES pais(id_pais),
   CONSTRAINT lector_ck_arco CHECK (
     (id_representante IS NOT NULL AND id_representante_lector IS NULL)
     OR
@@ -106,32 +116,9 @@ CREATE TABLE lector(
   )
 );
 
-
--- NOTE: trigger para validar mayoria de edad y necesidad de representante
-CREATE OR REPLACE TRIGGER tgr_validar_mayoria_edad
-BEFORE INSERT ON lector
-FOR EACH ROW
-DECLARE
-  meses NUMBER;
-  edad NUMBER;
-BEGIN
-  meses := MONTHS_BETWEEN(SYSDATE, :NEW.fecha_nac) ;
-  edad := TRUNC(meses/12);
-  IF edad >= 18 THEN
-    IF :NEW.id_representante IS NOT NULL OR :NEW.id_representante_lector IS NOT NULL THEN
-      RAISE_APPLICATION_ERROR(-20001, 'Los mayores de edad no necesitan representante');
-    END IF;
-  ELSE
-    IF :NEW.id_representante IS NULL AND :NEW.id_representante_lector IS NULL THEN
-      RAISE_APPLICATION_ERROR(-20001, 'Menor de edad sin representante asignado.');
-    END IF;
-  END IF;
-END;
-/
-
 CREATE SEQUENCE seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;
 
-
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE idioma_miembro(
   id_idioma NUMBER(3) NOT NULL,
   id_idioma_miembro NUMBER DEFAULT seq_idioma_miembro.NEXTVAL NOT NULL,
@@ -153,6 +140,7 @@ CREATE TABLE idioma_miembro(
 
 CREATE SEQUENCE seq_autor START WITH 1 INCREMENT BY 1 NOCYCLE;
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE autor(
   id_autor NUMBER DEFAULT seq_autor.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) ,
@@ -160,6 +148,7 @@ CREATE TABLE autor(
   nombre_ant_pseudonimo VARCHAR2(20)
 );
 
+-- TIPO DE ENTIDAD: Entrada (E)
 CREATE TABLE libro(
   isbn VARCHAR2(20) PRIMARY KEY,  -- https:/es.wikipedia.org/wiki/ISBN#El_ISBN_de_trece_d%C3%ADgitos
   titulo VARCHAR2(100) NOT NULL,
@@ -177,6 +166,7 @@ CREATE TABLE libro(
 );
 
 
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE libro_autor(
   id_autor NUMBER NOT NULL,
   isbn VARCHAR2(20) NOT NULL,
@@ -188,8 +178,10 @@ CREATE TABLE libro_autor(
 
 CREATE SEQUENCE seq_grupo START WITH 1 INCREMENT BY 1 NOCYCLE;
 
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE grupo (
   id_grupo NUMBER DEFAULT seq_grupo.NEXTVAL PRIMARY KEY,
+  id_club NUMBER NOT NULL,
   tipo_grupo VARCHAR2(10) NOT NULL,
   fecha_creacion DATE NOT NULL,
   dia_reunion NUMBER(1) NOT NULL, -- 1-7 Domingo, Lunes,...,Sabado
@@ -197,13 +189,247 @@ CREATE TABLE grupo (
   CONSTRAINT grupo_ck_tipo CHECK (tipo_grupo IN ('adultos','jovenes','niños')),
   CONSTRAINT grupo_ck_dia_permitido CHECK ((dia_reunion > 1) AND (dia_reunion<7)),
   CONSTRAINT grupo_ck_hora_reunion CHECK (TO_CHAR(hora_reunion, 'SS')='00'),
-  CONSTRAINT grupo_ck_hora_permitida CHECK (TO_CHAR(hora_reunion, 'HH24:MI') BETWEEN '17:00' AND '19:00') -- NOTE: Aqui no se si las 7 es hora maxima y ya nadie puede estar o es entre esta franja que pueden iniciar las reuniones, creo que es la ultima porque dice que los grupos de niños no pueden terminar despues de las 7
+  CONSTRAINT grupo_ck_hora_permitida CHECK (TO_CHAR(hora_reunion, 'HH24:MI') BETWEEN '17:00' AND '19:00'), -- NOTE: Aqui no se si las 7 es hora maxima y ya nadie puede estar o es entre esta franja que pueden iniciar las reuniones, creo que es la ultima porque dice que los grupos de niños no pueden terminar despues de las 7
+  CONSTRAINT grupo_fk_club FOREIGN KEY (id_club) REFERENCES club(id_club)
 );
 
-/
 
+-- =============================================================================
+-- SECUENCIAS FALTANTES (Backlog Parte 1)
+-- =============================================================================
+
+CREATE SEQUENCE seq_obra_actuada START WITH 1 INCREMENT BY 1 NOCYCLE;
+
+CREATE SEQUENCE seq_pago_membresia START WITH 1 INCREMENT BY 1 NOCYCLE;
+
+CREATE SEQUENCE seq_funcion START WITH 1 INCREMENT BY 1 NOCYCLE;
+
+CREATE SEQUENCE seq_voto_publico START WITH 1 INCREMENT BY 1 NOCYCLE;
+
+
+-- =============================================================================
+-- TABLAS FALTANTES (Backlog Parte 2) - Orden por dependencias de FK
+-- =============================================================================
+
+
+-- TIPO DE ENTIDAD: Entrada (E)
+-- Depende de: libro, club
+CREATE TABLE obra_actuada(
+  id_obra_act NUMBER DEFAULT seq_obra_actuada.NEXTVAL PRIMARY KEY,
+  titulo VARCHAR2(200) NOT NULL,
+  activo CHAR(1) NOT NULL, -- 'S' = activa, 'N' = inactiva
+  costo_entrada NUMBER(10, 2), -- NULL si no cobra entrada
+  isbn VARCHAR2(20) NOT NULL,
+  id_club NUMBER NOT NULL,
+  CONSTRAINT obra_actuada_ck_activo CHECK (activo IN ('S', 'N')),
+  CONSTRAINT obra_actuada_fk_libro FOREIGN KEY (isbn) REFERENCES libro(isbn),
+  CONSTRAINT obra_actuada_fk_club FOREIGN KEY (id_club) REFERENCES club(id_club)
+);
+
+
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
+-- Depende de: lector, club
+CREATE TABLE historia_membresia(
+  id_lector NUMBER NOT NULL,
+  id_club NUMBER NOT NULL,
+  fecha_i DATE NOT NULL,
+  estatus VARCHAR2(8) NOT NULL, -- 'activo' o 'retirado'
+  fecha_f DATE, -- NOTE: NULL mientras el miembro sigue activo
+  motivo_retiro VARCHAR2(12), -- 'voluntario', 'inasistencia', 'deuda', 'otro'
+  CONSTRAINT historia_membresia_pk PRIMARY KEY (id_lector, id_club, fecha_i),
+  CONSTRAINT historia_membresia_fk_lec FOREIGN KEY (id_lector) REFERENCES lector(id_lector),
+  CONSTRAINT historia_membresia_fk_club FOREIGN KEY (id_club) REFERENCES club(id_club),
+  CONSTRAINT historia_membresia_ck_est CHECK (estatus IN ('activo', 'retirado')),
+  CONSTRAINT historia_membresia_ck_mot CHECK (motivo_retiro IN ('voluntario', 'inasistencia', 'deuda', 'otro') OR motivo_retiro IS NULL)
+);
+
+
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
+-- Depende de: historia_membresia, libro
+-- NOTE: cada miembro registra exactamente 3 obras preferidas al afiliarse (prioridad 1, 2, 3)
+CREATE TABLE preferencia_obra(
+  id_lector NUMBER NOT NULL,
+  id_club NUMBER NOT NULL,
+  fecha_i DATE NOT NULL,
+  isbn VARCHAR2(20) NOT NULL,
+  prioridad NUMBER(1) NOT NULL, -- 1, 2 o 3
+  CONSTRAINT preferencia_obra_pk PRIMARY KEY (id_lector, id_club, fecha_i, isbn),
+  CONSTRAINT preferencia_obra_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES historia_membresia(id_lector, id_club, fecha_i),
+  CONSTRAINT preferencia_obra_fk_libro FOREIGN KEY (isbn) REFERENCES libro(isbn),
+  CONSTRAINT preferencia_obra_ck_prior CHECK (prioridad IN (1, 2, 3))
+);
+
+
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
+-- Depende de: historia_membresia, grupo
+-- NOTE: un miembro solo puede estar activo en un grupo a la vez (fec_f NULL indica activo)
+CREATE TABLE g_lec(
+  id_lector NUMBER NOT NULL,
+  id_club NUMBER NOT NULL,
+  fecha_i DATE NOT NULL,
+  id_grupo NUMBER NOT NULL,
+  fec_i DATE NOT NULL, -- fecha de ingreso al grupo
+  fec_f DATE, -- NOTE: NULL mientras el miembro sigue en el grupo
+  CONSTRAINT g_lec_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_grupo, fec_i),
+  CONSTRAINT g_lec_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES historia_membresia(id_lector, id_club, fecha_i),
+  CONSTRAINT g_lec_fk_grupo FOREIGN KEY (id_grupo) REFERENCES grupo(id_grupo)
+);
+
+
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
+-- Depende de: grupo, libro, historia_membresia (moderador)
+-- NOTE: el moderador es un miembro del club; para grupos de ninos debe ser de un grupo de adultos
+CREATE TABLE calendario_reunion_mes(
+  id_grupo NUMBER NOT NULL,
+  fecha DATE NOT NULL,
+  isbn VARCHAR2(20),
+  mod_id_lector NUMBER,
+  mod_id_club NUMBER,
+  mod_fecha_i DATE,
+  -- NOTE: Oracle SQL no tiene tipo BOOLEAN; se usa CHAR(1) con CHECK 'S'/'N'
+  realizada CHAR(1) NOT NULL,
+  ultima CHAR(1) NOT NULL,
+  conclusiones VARCHAR2(4000),
+  valoracion NUMBER(1), -- 1-5; acordado entre todos al cierre del libro
+  CONSTRAINT calendario_reunion_mes_pk PRIMARY KEY (id_grupo, fecha),
+  CONSTRAINT calendario_reunion_mes_fk_grupo FOREIGN KEY (id_grupo) REFERENCES grupo(id_grupo),
+  CONSTRAINT calendario_reunion_mes_fk_libro FOREIGN KEY (isbn) REFERENCES libro(isbn),
+  CONSTRAINT calendario_reunion_mes_fk_mod FOREIGN KEY (mod_id_lector, mod_id_club, mod_fecha_i) REFERENCES historia_membresia(id_lector, id_club, fecha_i),
+  CONSTRAINT calendario_reunion_mes_ck_realizada CHECK (realizada IN ('S', 'N')),
+  CONSTRAINT calendario_reunion_mes_ck_ultima CHECK (ultima IN ('S', 'N')),
+  CONSTRAINT calendario_reunion_mes_ck_val CHECK (valoracion BETWEEN 1 AND 5 OR valoracion IS NULL),
+  -- HC-06: cuando ultima='S' conclusiones y valoracion son obligatorias
+  CONSTRAINT calendario_ck_cierre CHECK (
+    ultima = 'N'
+    OR (ultima = 'S' AND conclusiones IS NOT NULL AND valoracion IS NOT NULL)
+  )
+);
+
+
+-- TIPO DE ENTIDAD: Entrada/Salida (E/S)
+-- Depende de: historia_membresia, obra_actuada
+-- NOTE: pueden actuar miembros de clubes asociados, por eso la FK apunta a historia_membresia global
+CREATE TABLE elenco(
+  id_lector NUMBER NOT NULL,
+  id_club NUMBER NOT NULL,
+  fecha_i DATE NOT NULL,
+  id_obra_act NUMBER NOT NULL,
+  CONSTRAINT elenco_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_obra_act),
+  CONSTRAINT elenco_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES historia_membresia(id_lector, id_club, fecha_i),
+  CONSTRAINT elenco_fk_obra FOREIGN KEY (id_obra_act) REFERENCES obra_actuada(id_obra_act)
+);
+
+
+-- TIPO DE ENTIDAD: Salida (S)
+-- Depende de: historia_membresia
+-- NOTE: solo aplica a clubes independientes (cuota_anual = 'S'); monto base $100 USD o equivalente local
+CREATE TABLE pago_membresia(
+  id_lector NUMBER NOT NULL,
+  id_club NUMBER NOT NULL,
+  fecha_i DATE NOT NULL,
+  id_pago NUMBER DEFAULT seq_pago_membresia.NEXTVAL NOT NULL,
+  fecha_pago DATE NOT NULL,
+  monto NUMBER(10, 2) NOT NULL,
+  CONSTRAINT pago_membresia_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_pago),
+  CONSTRAINT pago_membresia_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES historia_membresia(id_lector, id_club, fecha_i)
+);
+
+
+-- TIPO DE ENTIDAD: Salida (S)
+-- Depende de: g_lec, calendario_reunion_mes
+-- NOTE: si un miembro supera el 30% de inasistencias en un bimestre es retirado del club
+CREATE TABLE inasistencia(
+  id_lector NUMBER NOT NULL,
+  id_club NUMBER NOT NULL,
+  fecha_i DATE NOT NULL,
+  id_grupo NUMBER NOT NULL,
+  fec_i_g_lec DATE NOT NULL,
+  fecha_reunion DATE NOT NULL,
+  CONSTRAINT inasistencia_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion),
+  CONSTRAINT inasistencia_fk_glec FOREIGN KEY (id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec) REFERENCES g_lec(id_lector, id_club, fecha_i, id_grupo, fec_i),
+  CONSTRAINT inasistencia_fk_cal FOREIGN KEY (id_grupo, fecha_reunion) REFERENCES calendario_reunion_mes(id_grupo, fecha)
+);
+
+
+-- TIPO DE ENTIDAD: Salida (S)
+-- Depende de: obra_actuada
+-- NOTE: valoracion_obra se calcula como promedio de voto_publico al cerrar la funcion
+CREATE TABLE funcion(
+  id_funcion NUMBER DEFAULT seq_funcion.NEXTVAL PRIMARY KEY,
+  id_obra_act NUMBER NOT NULL,
+  fecha_funcion DATE NOT NULL,
+  hora_funcion DATE NOT NULL, -- NOTE: se usa solo la parte de hora (HH24:MI)
+  duracion_minutos NUMBER(3) NOT NULL,
+  valoracion_obra NUMBER(3, 2), -- promedio de calificaciones del publico (1-5)
+  cantidad_asistencia NUMBER NOT NULL,
+  CONSTRAINT funcion_fk_obra FOREIGN KEY (id_obra_act) REFERENCES obra_actuada(id_obra_act),
+  CONSTRAINT funcion_ck_valoracion CHECK (valoracion_obra BETWEEN 1 AND 5 OR valoracion_obra IS NULL)
+);
+
+
+-- TIPO DE ENTIDAD: Salida (S)
+-- Depende de: funcion
+-- NOTE: el publico vota por el mejor actor y califica la obra; pueden haber empates en mejor actor
+CREATE TABLE voto_publico(
+  id_voto NUMBER DEFAULT seq_voto_publico.NEXTVAL PRIMARY KEY,
+  id_funcion NUMBER NOT NULL,
+  calificacion_obra NUMBER(1) NOT NULL, -- estrellas: 1 a 5
+  CONSTRAINT voto_publico_fk_funcion FOREIGN KEY (id_funcion) REFERENCES funcion(id_funcion),
+  CONSTRAINT voto_publico_ck_cal CHECK (calificacion_obra BETWEEN 1 AND 5)
+);
+
+
+-- TIPO DE ENTIDAD: Salida (S)
+-- Depende de: funcion, elenco
+-- NOTE: pueden existir multiples ganadores por funcion (empate permitido)
+CREATE TABLE mejor_actor(
+  id_funcion NUMBER NOT NULL,
+  id_lector NUMBER NOT NULL,
+  id_club NUMBER NOT NULL,
+  fecha_i DATE NOT NULL,
+  id_obra_act NUMBER NOT NULL,
+  CONSTRAINT mejor_actor_pk PRIMARY KEY (id_funcion, id_lector, id_club, fecha_i, id_obra_act),
+  CONSTRAINT mejor_actor_fk_funcion FOREIGN KEY (id_funcion) REFERENCES funcion(id_funcion),
+  CONSTRAINT mejor_actor_fk_elenco FOREIGN KEY (id_lector, id_club, fecha_i, id_obra_act) REFERENCES elenco(id_lector, id_club, fecha_i, id_obra_act)
+);
+
+
+-- =============================================================================
+-- HC-09: INDICES DE RENDIMIENTO Y OPTIMIZACION (Backlog Tarea 3)
+-- =============================================================================
+
+-- Indices en llaves foraneas (evitan lock escalation en Oracle al hacer DELETE/UPDATE en tablas padre)
+CREATE INDEX idx_asociado_der              ON asociado(id_club_der);
+CREATE INDEX idx_lector_rep               ON lector(id_representante);
+CREATE INDEX idx_lector_rep_lec           ON lector(id_representante_lector);
+CREATE INDEX idx_lector_pais_nac          ON lector(id_pais_nac);
+CREATE INDEX idx_idioma_miembro_club      ON idioma_miembro(id_club);
+CREATE INDEX idx_idioma_miembro_lector    ON idioma_miembro(id_lector);
+CREATE INDEX idx_libro_pais               ON libro(id_pais);
+CREATE INDEX idx_libro_sig                ON libro(id_libro_siguiente);
+CREATE INDEX idx_libro_autor_isbn         ON libro_autor(isbn);
+CREATE INDEX idx_grupo_club               ON grupo(id_club);
+CREATE INDEX idx_historia_membresia_club  ON historia_membresia(id_club);
+CREATE INDEX idx_preferencia_obra_isbn    ON preferencia_obra(isbn);
+CREATE INDEX idx_g_lec_grupo              ON g_lec(id_grupo);
+CREATE INDEX idx_calendario_isbn          ON calendario_reunion_mes(isbn);
+CREATE INDEX idx_calendario_mod           ON calendario_reunion_mes(mod_id_lector, mod_id_club, mod_fecha_i);
+CREATE INDEX idx_obra_actuada_isbn        ON obra_actuada(isbn);
+CREATE INDEX idx_obra_actuada_club        ON obra_actuada(id_club);
+CREATE INDEX idx_funcion_obra             ON funcion(id_obra_act);
+CREATE INDEX idx_elenco_obra              ON elenco(id_obra_act);
+CREATE INDEX idx_mejor_actor_elenco       ON mejor_actor(id_lector, id_club, fecha_i, id_obra_act);
+
+-- Indices para busquedas frecuentes
+CREATE INDEX idx_lector_busqueda          ON lector(p_apellido, p_nombre);
+CREATE INDEX idx_libro_titulo             ON libro(titulo);
+CREATE INDEX idx_club_nombre              ON club(nombre_club);
+
+
+-- =============================================================================
 -- Verificar que todo se creo correctamente
-SELECT object_type, COUNT(*) 
-FROM user_objects 
-WHERE object_type IN ('TABLE', 'SEQUENCE', 'TRIGGER')
+-- =============================================================================
+SELECT object_type, COUNT(*)
+FROM user_objects
+WHERE object_type IN ('TABLE', 'SEQUENCE', 'TRIGGER', 'INDEX')
 GROUP BY object_type;
