@@ -1,9 +1,9 @@
 -- NOTE: el NOCYCLE es para que cuando llegue a 999 no se vaya a -999
-MJV_CREATE SEQUENCE seq_pais START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_pais START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
 -- TIPO DE ENTIDAD: Entrada (E)
-MJV_CREATE TABLE pais(
+CREATE TABLE pais(
   id_pais NUMBER(3) DEFAULT seq_pais.NEXTVAL PRIMARY KEY, -- 195 paises en el mundo maso
   nombre_pais VARCHAR2(100) NOT NULL,
   moneda_local VARCHAR2(3) NOT NULL, -- (Codigos ISO) USD, VES, COP, etc.
@@ -11,12 +11,12 @@ MJV_CREATE TABLE pais(
 );
 
 
-MJV_CREATE SEQUENCE seq_ciudad START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_ciudad START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
 -- TIPO DE ENTIDAD: Entrada (E)
 -- NOTE: el NOT NULL es implicito por el CONSTRAINT, se pone para no ser ambiguo
-MJV_CREATE TABLE ciudad(
+CREATE TABLE ciudad(
   id_pais NUMBER(3) NOT NULL,
   id_ciudad NUMBER(3) DEFAULT seq_ciudad.NEXTVAL,
   nombre_ciudad VARCHAR2(100) NOT NULL,
@@ -25,11 +25,11 @@ MJV_CREATE TABLE ciudad(
 );
 
 
-MJV_CREATE SEQUENCE seq_institucion START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_institucion START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
 -- TIPO DE ENTIDAD: Entrada (E)
-MJV_CREATE TABLE institucion(
+CREATE TABLE institucion(
   id_pais NUMBER(3) NOT NULL,
   id_ciudad NUMBER(3) NOT NULL,
   id_institucion NUMBER(3) DEFAULT seq_institucion.NEXTVAL NOT NULL,
@@ -41,21 +41,21 @@ MJV_CREATE TABLE institucion(
 );
 
 
-MJV_CREATE SEQUENCE seq_idioma START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_idioma START WITH 1 MAXVALUE 999 INCREMENT BY 1 NOCYCLE;
 
 
 -- TIPO DE ENTIDAD: Entrada (E)
-MJV_CREATE TABLE idioma(
+CREATE TABLE idioma(
   id_idioma NUMBER(3) DEFAULT seq_idioma.NEXTVAL PRIMARY KEY,
   nombre_idioma VARCHAR2(100) NOT NULL -- NOTE: en el ER idioma no tiene el '*'
 );
 
 
-MJV_CREATE SEQUENCE seq_club START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_club START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
 -- TIPO DE ENTIDAD: Entrada (E)
-MJV_CREATE TABLE club(
+CREATE TABLE club(
   id_club NUMBER DEFAULT seq_club.NEXTVAL PRIMARY KEY,
   nombre_club VARCHAR2(100) NOT NULL,
   cuota_anual CHAR(1) NOT NULL, -- Con una vista se puede pasar a SiNo
@@ -71,7 +71,7 @@ CONSTRAINT club_fk_institucion FOREIGN KEY (id_pais, id_ciudad, id_institucion)
 );
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
-MJV_CREATE TABLE asociado(
+CREATE TABLE asociado(
   id_club_izq NUMBER NOT NULL,
   id_club_der NUMBER NOT NULL,
   CONSTRAINT asociado_pk PRIMARY KEY (id_club_izq, id_club_der),
@@ -81,11 +81,11 @@ MJV_CREATE TABLE asociado(
 );
 
 
-MJV_CREATE SEQUENCE seq_representante START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_representante START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
 -- TIPO DE ENTIDAD: Entrada (E)
-MJV_CREATE TABLE representante(
+CREATE TABLE representante(
   id_representante NUMBER DEFAULT seq_representante.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) NOT NULL,
   p_apellido VARCHAR2(20) NOT NULL,
@@ -94,11 +94,11 @@ MJV_CREATE TABLE representante(
 );
 
 
-MJV_CREATE SEQUENCE seq_lector START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_lector START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
-MJV_CREATE TABLE lector(
+CREATE TABLE lector(
   id_lector NUMBER DEFAULT seq_lector.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) NOT NULL,
   p_apellido VARCHAR2(20) NOT NULL,
@@ -123,10 +123,10 @@ MJV_CREATE TABLE lector(
   )
 );
 
-MJV_CREATE SEQUENCE seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
-MJV_CREATE TABLE idioma_miembro(
+CREATE TABLE idioma_miembro(
   id_idioma NUMBER(3) NOT NULL,
   id_idioma_miembro NUMBER DEFAULT seq_idioma_miembro.NEXTVAL NOT NULL,
   tipo CHAR(1) NOT NULL, -- 'L' = Lector, 'C' = Club
@@ -145,10 +145,10 @@ MJV_CREATE TABLE idioma_miembro(
 );
 
 
-MJV_CREATE SEQUENCE seq_autor START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_autor START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada (E)
-MJV_CREATE TABLE autor(
+CREATE TABLE autor(
   id_autor NUMBER DEFAULT seq_autor.NEXTVAL PRIMARY KEY,
   p_nombre VARCHAR2(20) ,
   p_apellido VARCHAR2(20) ,
@@ -156,7 +156,7 @@ MJV_CREATE TABLE autor(
 );
 
 -- TIPO DE ENTIDAD: Entrada (E)
-MJV_CREATE TABLE libro(
+CREATE TABLE libro(
   isbn VARCHAR2(20) PRIMARY KEY,  -- https:/es.wikipedia.org/wiki/ISBN#El_ISBN_de_trece_d%C3%ADgitos
   titulo VARCHAR2(100) NOT NULL,
   tipo_narrativa VARCHAR2(10) NOT NULL,
@@ -174,7 +174,7 @@ MJV_CREATE TABLE libro(
 
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
-MJV_CREATE TABLE libro_autor(
+CREATE TABLE libro_autor(
   id_autor NUMBER NOT NULL,
   isbn VARCHAR2(20) NOT NULL,
   CONSTRAINT libro_autor_pk PRIMARY KEY (id_autor, isbn),
@@ -183,10 +183,10 @@ MJV_CREATE TABLE libro_autor(
 );
 
 
-MJV_CREATE SEQUENCE seq_grupo START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_grupo START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
-MJV_CREATE TABLE grupo (
+CREATE TABLE grupo (
   id_grupo        NUMBER DEFAULT seq_grupo.NEXTVAL NOT NULL,
   id_club         NUMBER NOT NULL,
   tipo_grupo      VARCHAR2(10) NOT NULL,
@@ -206,13 +206,13 @@ MJV_CREATE TABLE grupo (
 -- SECUENCIAS FALTANTES (Backlog Parte 1)
 -- =============================================================================
 
-MJV_CREATE SEQUENCE seq_obra_actuada START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_obra_actuada START WITH 1 INCREMENT BY 1 NOCYCLE;
 
-MJV_CREATE SEQUENCE seq_pago_membresia START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_pago_membresia START WITH 1 INCREMENT BY 1 NOCYCLE;
 
-MJV_CREATE SEQUENCE seq_funcion START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_funcion START WITH 1 INCREMENT BY 1 NOCYCLE;
 
-MJV_CREATE SEQUENCE seq_voto_publico START WITH 1 INCREMENT BY 1 NOCYCLE;
+CREATE SEQUENCE seq_voto_publico START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 
 -- =============================================================================
@@ -222,7 +222,7 @@ MJV_CREATE SEQUENCE seq_voto_publico START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada (E)
 -- Depende de: libro, club
-MJV_CREATE TABLE obra_actuada(
+CREATE TABLE obra_actuada(
   id_obra_act NUMBER DEFAULT seq_obra_actuada.NEXTVAL NOT NULL,
   titulo VARCHAR2(200) NOT NULL,
   activo CHAR(1) NOT NULL, -- 'S' = activa, 'N' = inactiva
@@ -238,7 +238,7 @@ MJV_CREATE TABLE obra_actuada(
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 -- Depende de: lector, club
-MJV_CREATE TABLE historia_membresia (
+CREATE TABLE historia_membresia (
   id_lector NUMBER NOT NULL,
   id_club NUMBER NOT NULL,
   fecha_i DATE NOT NULL,
@@ -256,7 +256,7 @@ MJV_CREATE TABLE historia_membresia (
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 -- Depende de: historia_membresia, libro
 -- NOTE: cada miembro registra exactamente 3 obras preferidas al afiliarse (prioridad 1, 2, 3)
-MJV_CREATE TABLE preferencia_obra(
+CREATE TABLE preferencia_obra(
   id_lector NUMBER NOT NULL,
   isbn VARCHAR2(20) NOT NULL,
   prioridad NUMBER(1) NOT NULL, -- 1, 2 o 3
@@ -275,7 +275,7 @@ MJV_CREATE TABLE preferencia_obra(
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 -- Depende de: historia_membresia, grupo
 -- NOTE: un miembro solo puede estar activo en un grupo a la vez (fec_f NULL indica activo)
-MJV_CREATE TABLE g_lec(
+CREATE TABLE g_lec(
   id_lector NUMBER NOT NULL,
   id_club NUMBER NOT NULL,
   fecha_i DATE NOT NULL,
@@ -291,7 +291,7 @@ MJV_CREATE TABLE g_lec(
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 -- Depende de: grupo, libro, historia_membresia (moderador)
 -- NOTE: el moderador es un miembro del club; para grupos de ninos debe ser de un grupo de adultos
-MJV_CREATE TABLE calendario_reunion_mes(
+CREATE TABLE calendario_reunion_mes(
   id_club NUMBER NOT NULL,
   id_grupo NUMBER NOT NULL,
   fecha DATE NOT NULL,
@@ -327,7 +327,7 @@ CONSTRAINT calendario_reunion_mes_fk_g_lec FOREIGN KEY (mod_id_lector, id_club, 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 -- Depende de: historia_membresia, obra_actuada
 -- NOTE: pueden actuar miembros de clubes asociados, por eso la FK apunta a historia_membresia global
-MJV_CREATE TABLE elenco(
+CREATE TABLE elenco(
   id_lector NUMBER NOT NULL,
   id_club NUMBER NOT NULL,
   id_obra_act NUMBER NOT NULL,
@@ -348,7 +348,7 @@ CONSTRAINT elenco_fk_obra  FOREIGN KEY (id_obra_act, isbn, id_club) REFERENCES o
 -- TIPO DE ENTIDAD: Salida (S)
 -- Depende de: historia_membresia
 -- NOTE: solo aplica a clubes independientes (cuota_anual = 'S'); monto base $100 USD o equivalente local
-MJV_CREATE TABLE pago_membresia(
+CREATE TABLE pago_membresia(
   id_lector NUMBER NOT NULL,
   id_club NUMBER NOT NULL,
   fecha_i DATE NOT NULL,
@@ -365,7 +365,7 @@ CONSTRAINT pago_membresia_fk_lector FOREIGN KEY (id_lector) REFERENCES lector (i
 -- TIPO DE ENTIDAD: Salida (S)
 -- Depende de: g_lec, calendario_reunion_mes
 -- NOTE: si un miembro supera el 30% de inasistencias en un bimestre es retirado del club
-MJV_CREATE TABLE inasistencia(
+CREATE TABLE inasistencia(
   id_lector NUMBER NOT NULL,
   id_club NUMBER NOT NULL,
   fecha_i DATE NOT NULL,
@@ -387,7 +387,7 @@ fecha_reunion -- PK inasistencia
 -- TIPO DE ENTIDAD: Salida (S)
 -- Depende de: obra_actuada
 -- NOTE: valoracion_obra se calcula como promedio de voto_publico al cerrar la funcion
-MJV_CREATE TABLE funcion(
+CREATE TABLE funcion(
   id_funcion NUMBER DEFAULT seq_funcion.NEXTVAL NOT NULL,
   id_obra_act NUMBER NOT NULL,
   isbn VARCHAR2(20) NOT NULL,
@@ -411,7 +411,7 @@ id_obra_act,isbn,id_club -- PK obra_actuada
 -- TIPO DE ENTIDAD: Salida (S)
 -- Depende de: funcion
 -- NOTE: el publico vota por el mejor actor y califica la obra; pueden haber empates en mejor actor
-MJV_CREATE TABLE voto_publico(
+CREATE TABLE voto_publico(
   id_voto NUMBER DEFAULT seq_voto_publico.NEXTVAL PRIMARY KEY,
   id_funcion NUMBER NOT NULL,
   id_obra_act NUMBER NOT NULL,
@@ -428,7 +428,7 @@ CONSTRAINT voto_publico_fk_lector FOREIGN KEY (id_lector) REFERENCES lector(id_l
 -- TIPO DE ENTIDAD: Salida (S)
 -- Depende de: funcion, elenco
 -- NOTE: pueden existir multiples ganadores por funcion (empate permitido)
-MJV_CREATE TABLE mejor_actor(
+CREATE TABLE mejor_actor(
   id_funcion NUMBER NOT NULL,
   id_lector NUMBER NOT NULL,
   id_club NUMBER NOT NULL,
@@ -449,31 +449,31 @@ MJV_CREATE TABLE mejor_actor(
 -- =============================================================================
 
 -- Indices en llaves foraneas (evitan lock escalation en Oracle al hacer DELETE/UPDATE en tablas padre)
-MJV_CREATE INDEX idx_asociado_der              ON asociado(id_club_der);
-MJV_CREATE INDEX idx_lector_rep               ON lector(id_representante);
-MJV_CREATE INDEX idx_lector_rep_lec           ON lector(id_representante_lector);
-MJV_CREATE INDEX idx_lector_pais_nac          ON lector(id_pais_nac);
-MJV_CREATE INDEX idx_idioma_miembro_club      ON idioma_miembro(id_club);
-MJV_CREATE INDEX idx_idioma_miembro_lector    ON idioma_miembro(id_lector);
-MJV_CREATE INDEX idx_libro_pais               ON libro(id_pais);
-MJV_CREATE INDEX idx_libro_sig                ON libro(id_libro_siguiente);
-MJV_CREATE INDEX idx_libro_autor_isbn         ON libro_autor(isbn);
-MJV_CREATE INDEX idx_grupo_club               ON grupo(id_club);
-MJV_CREATE INDEX idx_historia_membresia_club  ON historia_membresia(id_club);
-MJV_CREATE INDEX idx_preferencia_obra_isbn    ON preferencia_obra(isbn);
-MJV_CREATE INDEX idx_g_lec_grupo              ON g_lec(id_grupo);
-MJV_CREATE INDEX idx_calendario_isbn          ON calendario_reunion_mes(isbn);
-MJV_CREATE INDEX idx_calendario_mod           ON calendario_reunion_mes(mod_id_lector, id_club, mod_fecha_i);
-MJV_CREATE INDEX idx_obra_actuada_isbn        ON obra_actuada(isbn);
-MJV_CREATE INDEX idx_obra_actuada_club        ON obra_actuada(id_club);
-MJV_CREATE INDEX idx_funcion_obra             ON funcion(id_obra_act);
-MJV_CREATE INDEX idx_elenco_obra              ON elenco(id_obra_act);
-MJV_CREATE INDEX idx_mejor_actor_elenco       ON mejor_actor(id_lector, id_club, fecha_i, id_obra_act);
+CREATE INDEX idx_asociado_der              ON asociado(id_club_der);
+CREATE INDEX idx_lector_rep               ON lector(id_representante);
+CREATE INDEX idx_lector_rep_lec           ON lector(id_representante_lector);
+CREATE INDEX idx_lector_pais_nac          ON lector(id_pais_nac);
+CREATE INDEX idx_idioma_miembro_club      ON idioma_miembro(id_club);
+CREATE INDEX idx_idioma_miembro_lector    ON idioma_miembro(id_lector);
+CREATE INDEX idx_libro_pais               ON libro(id_pais);
+CREATE INDEX idx_libro_sig                ON libro(id_libro_siguiente);
+CREATE INDEX idx_libro_autor_isbn         ON libro_autor(isbn);
+CREATE INDEX idx_grupo_club               ON grupo(id_club);
+CREATE INDEX idx_historia_membresia_club  ON historia_membresia(id_club);
+CREATE INDEX idx_preferencia_obra_isbn    ON preferencia_obra(isbn);
+CREATE INDEX idx_g_lec_grupo              ON g_lec(id_grupo);
+CREATE INDEX idx_calendario_isbn          ON calendario_reunion_mes(isbn);
+CREATE INDEX idx_calendario_mod           ON calendario_reunion_mes(mod_id_lector, id_club, mod_fecha_i);
+CREATE INDEX idx_obra_actuada_isbn        ON obra_actuada(isbn);
+CREATE INDEX idx_obra_actuada_club        ON obra_actuada(id_club);
+CREATE INDEX idx_funcion_obra             ON funcion(id_obra_act);
+CREATE INDEX idx_elenco_obra              ON elenco(id_obra_act);
+CREATE INDEX idx_mejor_actor_elenco       ON mejor_actor(id_lector, id_club, fecha_i, id_obra_act);
 
 -- Indices para busquedas frecuentes
-MJV_CREATE INDEX idx_lector_busqueda          ON lector(p_apellido, p_nombre);
-MJV_CREATE INDEX idx_libro_titulo             ON libro(titulo);
-MJV_CREATE INDEX idx_club_nombre              ON club(nombre_club);
+CREATE INDEX idx_lector_busqueda          ON lector(p_apellido, p_nombre);
+CREATE INDEX idx_libro_titulo             ON libro(titulo);
+CREATE INDEX idx_club_nombre              ON club(nombre_club);
 
 
 -- =============================================================================
