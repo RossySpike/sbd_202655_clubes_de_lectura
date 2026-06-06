@@ -180,12 +180,13 @@ CREATE SEQUENCE seq_grupo START WITH 1 INCREMENT BY 1 NOCYCLE;
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 CREATE TABLE grupo (
-  id_grupo NUMBER DEFAULT seq_grupo.NEXTVAL PRIMARY KEY,
-  id_club NUMBER NOT NULL,
-  tipo_grupo VARCHAR2(10) NOT NULL,
-  fecha_creacion DATE NOT NULL,
-  dia_reunion NUMBER(1) NOT NULL, -- 1-7 Domingo, Lunes,...,Sabado
-  hora_reunion DATE NOT NULL, -- Hora militar
+  id_grupo        NUMBER DEFAULT seq_grupo.NEXTVAL NOT NULL,
+  id_club         NUMBER NOT NULL,
+  tipo_grupo      VARCHAR2(10) NOT NULL,
+  fecha_creacion  DATE NOT NULL,
+  dia_reunion     NUMBER(1) NOT NULL, -- 1-7 Domingo, Lunes,...,Sabado
+  hora_reunion    DATE NOT NULL, -- Hora militar
+  CONSTRAINT grupo_pk PRIMARY KEY (id_grupo, id_club), 
   CONSTRAINT grupo_ck_tipo CHECK (tipo_grupo IN ('adultos','jovenes','niños')),
   CONSTRAINT grupo_ck_dia_permitido CHECK ((dia_reunion > 1) AND (dia_reunion<7)),
   CONSTRAINT grupo_ck_hora_reunion CHECK (TO_CHAR(hora_reunion, 'SS')='00'),
@@ -215,12 +216,13 @@ CREATE SEQUENCE seq_voto_publico START WITH 1 INCREMENT BY 1 NOCYCLE;
 -- TIPO DE ENTIDAD: Entrada (E)
 -- Depende de: libro, club
 CREATE TABLE obra_actuada(
-  id_obra_act NUMBER DEFAULT seq_obra_actuada.NEXTVAL PRIMARY KEY,
+  id_obra_act NUMBER DEFAULT seq_obra_actuada.NEXTVAL NOT NULL,
   titulo VARCHAR2(200) NOT NULL,
   activo CHAR(1) NOT NULL, -- 'S' = activa, 'N' = inactiva
   costo_entrada NUMBER(10, 2), -- NULL si no cobra entrada
   isbn VARCHAR2(20) NOT NULL,
   id_club NUMBER NOT NULL,
+  CONSTRAINT obra_actuada_pk PRIMARY KEY (id_obra_act,isbn,id_club),
   CONSTRAINT obra_actuada_ck_activo CHECK (activo IN ('S', 'N')),
   CONSTRAINT obra_actuada_fk_libro FOREIGN KEY (isbn) REFERENCES libro(isbn),
   CONSTRAINT obra_actuada_fk_club FOREIGN KEY (id_club) REFERENCES club(id_club)
@@ -229,7 +231,7 @@ CREATE TABLE obra_actuada(
 
 -- TIPO DE ENTIDAD: Entrada/Salida (E/S)
 -- Depende de: lector, club
-CREATE TABLE historia_membresia(
+CREATE TABLE historia_membresia (
   id_lector NUMBER NOT NULL,
   id_club NUMBER NOT NULL,
   fecha_i DATE NOT NULL,
@@ -312,11 +314,22 @@ CREATE TABLE calendario_reunion_mes(
 CREATE TABLE elenco(
   id_lector NUMBER NOT NULL,
   id_club NUMBER NOT NULL,
-  fecha_i DATE NOT NULL,
+-- ==============================================
+-- WARNING: no esta en el er
+--  fecha_i DATE NOT NULL,
+-- ==============================================
   id_obra_act NUMBER NOT NULL,
-  CONSTRAINT elenco_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_obra_act),
-  CONSTRAINT elenco_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES historia_membresia(id_lector, id_club, fecha_i),
-  CONSTRAINT elenco_fk_obra FOREIGN KEY (id_obra_act) REFERENCES obra_actuada(id_obra_act)
+  isbn VARCHAR2(20),
+  CONSTRAINT elenco_pk PRIMARY KEY (id_lector, -- PK Lector
+   isbn,id_club,  id_obra_act -- PK obra_actuada
+  ),
+-- ==============================================
+-- WARNING: no esta en el er
+--  va para obra_actuada y lector no historia_membresia
+  -- CONSTRAINT elenco_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES historia_membresia(id_lector, id_club, fecha_i),
+-- ==============================================
+CONSTRAINT elenco_fk_lector FOREIGN KEY (id_lector) REFERENCES lector(id_lector),
+  CONSTRAINT elenco_fk_obra FOREIGN KEY (isbn,id_club,id_obra_act) REFERENCES obra_actuada(isbn,id_club,id_obra_act)
 );
 
 
@@ -345,9 +358,15 @@ CREATE TABLE inasistencia(
   id_grupo NUMBER NOT NULL,
   fec_i_g_lec DATE NOT NULL,
   fecha_reunion DATE NOT NULL,
-  CONSTRAINT inasistencia_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion),
+  isbn VARCHAR2(20) NOT NULL, 
+  CONSTRAINT inasistencia_pk PRIMARY KEY (
+isbn, -- PK libro
+id_grupo, id_club, -- PK grupo y g_lec (historia_membresia pk compuesta)
+id_lector, fecha_i, fec_i_g_lec, -- PK g_lec
+fecha_reunion -- PK inasistencia
+),
   CONSTRAINT inasistencia_fk_glec FOREIGN KEY (id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec) REFERENCES g_lec(id_lector, id_club, fecha_i, id_grupo, fec_i),
-  CONSTRAINT inasistencia_fk_cal FOREIGN KEY (id_grupo, fecha_reunion) REFERENCES calendario_reunion_mes(id_grupo, fecha)
+  CONSTRAINT inasistencia_fk_cal FOREIGN KEY (id_grupo, fecha_reunion,isbn) REFERENCES calendario_reunion_mes(id_grupo, fecha,isbn)
 );
 
 
@@ -355,14 +374,22 @@ CREATE TABLE inasistencia(
 -- Depende de: obra_actuada
 -- NOTE: valoracion_obra se calcula como promedio de voto_publico al cerrar la funcion
 CREATE TABLE funcion(
-  id_funcion NUMBER DEFAULT seq_funcion.NEXTVAL PRIMARY KEY,
+  id_funcion NUMBER DEFAULT seq_funcion.NEXTVAL NOT NULL,
   id_obra_act NUMBER NOT NULL,
+  isbn VARCHAR2(20) NOT NULL,
+  id_club NUMBER NOT NULL,
   fecha_funcion DATE NOT NULL,
-  hora_funcion DATE NOT NULL, -- NOTE: se usa solo la parte de hora (HH24:MI)
-  duracion_minutos NUMBER(3) NOT NULL,
+-- ==============================================
+-- WARNING: no esta en el er
+--  hora_funcion DATE NOT NULL, -- NOTE: se usa solo la parte de hora (HH24:MI)
+--  duracion_minutos NUMBER(3) NOT NULL,
+-- ==============================================
   valoracion_obra NUMBER(3, 2), -- promedio de calificaciones del publico (1-5)
   cantidad_asistencia NUMBER NOT NULL,
-  CONSTRAINT funcion_fk_obra FOREIGN KEY (id_obra_act) REFERENCES obra_actuada(id_obra_act),
+CONSTRAINT funcion_pk PRIMARY KEY (id_funcion, -- PK funcion
+id_obra_act,isbn,id_club -- PK obra_actuada
+),
+  CONSTRAINT funcion_fk_obra FOREIGN KEY (id_obra_act,isbn,id_club) REFERENCES obra_actuada(id_obra_act,isbn,id_club),
   CONSTRAINT funcion_ck_valoracion CHECK (valoracion_obra BETWEEN 1 AND 5 OR valoracion_obra IS NULL)
 );
 
@@ -388,9 +415,13 @@ CREATE TABLE mejor_actor(
   id_club NUMBER NOT NULL,
   fecha_i DATE NOT NULL,
   id_obra_act NUMBER NOT NULL,
-  CONSTRAINT mejor_actor_pk PRIMARY KEY (id_funcion, id_lector, id_club, fecha_i, id_obra_act),
-  CONSTRAINT mejor_actor_fk_funcion FOREIGN KEY (id_funcion) REFERENCES funcion(id_funcion),
-  CONSTRAINT mejor_actor_fk_elenco FOREIGN KEY (id_lector, id_club, fecha_i, id_obra_act) REFERENCES elenco(id_lector, id_club, fecha_i, id_obra_act)
+  isbn VARCHAR2(20) NOT NULL,
+  CONSTRAINT mejor_actor_pk PRIMARY KEY (
+  id_funcion,  id_obra_act, isbn,id_club, -- PK funcion
+  id_lector  -- al igual que isbn,id_club,  id_obra_act PK elenco
+  ),
+  CONSTRAINT mejor_actor_fk_funcion FOREIGN KEY (id_funcion, id_obra_act,isbn,id_club ) REFERENCES funcion(id_funcion, id_obra_act,isbn,id_club),
+  CONSTRAINT mejor_actor_fk_elenco FOREIGN KEY (id_lector, isbn,id_club,  id_obra_act) REFERENCES elenco(id_lector, isbn,id_club,  id_obra_act )
 );
 
 
