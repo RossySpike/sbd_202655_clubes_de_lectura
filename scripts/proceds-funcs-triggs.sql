@@ -80,8 +80,7 @@ CREATE OR REPLACE FUNCTION MJV_conversion_monetaria(
   p_monto          NUMBER,
   p_moneda_origen  VARCHAR2,
   p_moneda_destino VARCHAR2,
-  p_tasa           NUMBER,
-  p_fecha          DATE DEFAULT SYSDATE
+  p_tasa           NUMBER
 ) RETURN NUMBER
 IS
   v_origen  VARCHAR2(3) := UPPER(TRIM(p_moneda_origen));
