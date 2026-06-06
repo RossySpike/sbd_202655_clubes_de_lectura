@@ -116,27 +116,23 @@ BEGIN
   RETURN ROUND(p_monto * p_tasa, 2);
 END conversion_monetaria;
 /
-
--- Retorna la edad del lector en años: ROUND((SYSDATE - fecha_nac) / 365, 0).
 CREATE OR REPLACE FUNCTION edad_miembro(p_id_lector NUMBER)
 RETURN NUMBER
 IS
   v_fecha_nac DATE;
 BEGIN
-  SELECT fecha_nac
-  INTO v_fecha_nac
+  SELECT fecha_nac INTO v_fecha_nac
   FROM lector
   WHERE id_lector = p_id_lector;
 
-  RETURN ROUND((SYSDATE - v_fecha_nac) / 365, 0);
+  -- TRUNC elimina los decimales dejando los años exactos cumplidos
+  RETURN TRUNC(MONTHS_BETWEEN(SYSDATE, v_fecha_nac) / 12);
 EXCEPTION
   WHEN NO_DATA_FOUND THEN
-    RAISE_APPLICATION_ERROR(-20110, 'Lector no encontrado: ' || p_id_lector);
+    RAISE_APPLICATION_ERROR(-20110, 'Lector no encontrado con ID: ' || p_id_lector);
 END edad_miembro;
 /
 
--- Retorna la antigüedad del lector en el club en años.
--- Usa la membresía activa; si fecha_f es NULL, calcula hasta SYSDATE.
 CREATE OR REPLACE FUNCTION antiguedad_en_club_miembro(
   p_id_lector NUMBER,
   p_id_club   NUMBER
@@ -145,18 +141,18 @@ IS
   v_fecha_i DATE;
   v_fecha_f DATE;
 BEGIN
-  SELECT fecha_i, fecha_f
-  INTO v_fecha_i, v_fecha_f
+  -- Se busca el registro activo (o el último) en la historia de membresía
+  SELECT fecha_i, fecha_f INTO v_fecha_i, v_fecha_f
   FROM historia_membresia
   WHERE id_lector = p_id_lector
     AND id_club   = p_id_club
     AND estatus   = 'activo';
 
-  RETURN ROUND((NVL(v_fecha_f, SYSDATE) - v_fecha_i) / 365, 0);
+  RETURN TRUNC(MONTHS_BETWEEN(NVL(v_fecha_f, SYSDATE), v_fecha_i) / 12);
 EXCEPTION
   WHEN NO_DATA_FOUND THEN
     RAISE_APPLICATION_ERROR(-20111,
-      'No hay membresía activa para lector ' || p_id_lector || ' en club ' || p_id_club);
+      'No se encontró una membresía activa para el lector ' || p_id_lector || ' en el club ' || p_id_club);
 END antiguedad_en_club_miembro;
 /
 
@@ -170,7 +166,7 @@ CREATE OR REPLACE FUNCTION promedio_part_mensual_tipo_grupo(
   p_anio       NUMBER
 ) RETURN NUMBER
 IS
-  v_tipo     VARCHAR2(10) := TRIM(p_tipo_grupo);
+  v_tipo     VARCHAR2(10) := LOWER(TRIM(p_tipo_grupo));
   v_promedio NUMBER;
 BEGIN
   IF p_mes < 1 OR p_mes > 12 THEN
@@ -181,23 +177,20 @@ BEGIN
   INTO v_promedio
   FROM (
     SELECT g.id_grupo,
+      -- 1. OPORTUNIDADES: Reuniones realizadas donde el miembro debió asistir según su vigencia en g_lec
       (SELECT COUNT(*)
        FROM calendario_reunion_mes crm
-       JOIN g_lec gl
-         ON gl.id_grupo = crm.id_grupo
-        AND gl.id_club  = g.id_club
+       JOIN g_lec gl ON gl.id_grupo = crm.id_grupo AND gl.id_club = g.id_club
        WHERE crm.id_grupo = g.id_grupo
          AND crm.realizada = 'S'
          AND EXTRACT(MONTH FROM crm.fecha) = p_mes
          AND EXTRACT(YEAR FROM crm.fecha)  = p_anio
-         AND gl.fec_i <= crm.fecha
-         AND (gl.fec_f IS NULL OR gl.fec_f >= crm.fecha)
+         AND crm.fecha BETWEEN gl.fec_i AND NVL(gl.fec_f, TO_DATE('31/12/9999', 'DD/MM/YYYY'))
       ) AS esperadas,
+      -- 2. INASISTENCIAS: Registros reales en la tabla inasistencia que coincidan con esos parámetros
       (SELECT COUNT(*)
        FROM inasistencia i
-       JOIN calendario_reunion_mes crm
-         ON crm.id_grupo = i.id_grupo
-        AND crm.fecha    = i.fecha_reunion
+       JOIN calendario_reunion_mes crm ON crm.id_grupo = i.id_grupo AND crm.fecha = i.fecha_reunion
        WHERE i.id_grupo = g.id_grupo
          AND i.id_club  = g.id_club
          AND crm.realizada = 'S'
@@ -205,14 +198,15 @@ BEGIN
          AND EXTRACT(YEAR FROM crm.fecha)  = p_anio
       ) AS faltas
     FROM grupo g
-    WHERE g.id_club    = p_id_club
-      AND g.tipo_grupo = v_tipo
+    WHERE g.id_club = p_id_club
+      AND LOWER(g.tipo_grupo) = v_tipo
   )
   WHERE esperadas > 0;
 
   RETURN NVL(v_promedio, 0);
 END promedio_part_mensual_tipo_grupo;
 /
+
 
 -- Porcentaje de asistencia (0-100) de un lector en un club durante un bimestre.
 -- Bimestre 1 = ene-feb, 2 = mar-abr, 3 = may-jun, 4 = jul-ago, 5 = sep-oct, 6 = nov-dic.
@@ -235,30 +229,27 @@ BEGIN
   v_mes_ini := (p_bimestre - 1) * 2 + 1;
   v_mes_fin := p_bimestre * 2;
 
+  -- Reuniones totales programadas y ejecutadas a las que el lector pertenecía en ese bimestre
   SELECT COUNT(*)
   INTO v_esperadas
   FROM calendario_reunion_mes crm
-  JOIN g_lec gl
-    ON gl.id_grupo = crm.id_grupo
-   AND gl.id_club  = p_id_club
+  JOIN g_lec gl ON gl.id_grupo = crm.id_grupo AND gl.id_club = p_id_club
   WHERE gl.id_lector = p_id_lector
     AND gl.id_club   = p_id_club
     AND crm.realizada = 'S'
     AND EXTRACT(YEAR FROM crm.fecha) = p_anio
     AND EXTRACT(MONTH FROM crm.fecha) BETWEEN v_mes_ini AND v_mes_fin
-    AND gl.fec_i <= crm.fecha
-    AND (gl.fec_f IS NULL OR gl.fec_f >= crm.fecha);
+    AND crm.fecha BETWEEN gl.fec_i AND NVL(gl.fec_f, TO_DATE('31/12/9999', 'DD/MM/YYYY'));
 
   IF v_esperadas = 0 THEN
-    RETURN 0;
+    RETURN 100; -- Si no tenía reuniones obligatorias, su asistencia técnica es limpia (100%)
   END IF;
 
+  -- Inasistencias registradas del lector en ese mismo periodo
   SELECT COUNT(*)
   INTO v_faltas
   FROM inasistencia i
-  JOIN calendario_reunion_mes crm
-    ON crm.id_grupo = i.id_grupo
-   AND crm.fecha    = i.fecha_reunion
+  JOIN calendario_reunion_mes crm ON crm.id_grupo = i.id_grupo AND crm.fecha = i.fecha_reunion
   WHERE i.id_lector = p_id_lector
     AND i.id_club   = p_id_club
     AND crm.realizada = 'S'
@@ -268,4 +259,3 @@ BEGIN
   RETURN ROUND(((v_esperadas - v_faltas) / v_esperadas) * 100, 2);
 END participacion_bimestre_miembro;
 /
-
