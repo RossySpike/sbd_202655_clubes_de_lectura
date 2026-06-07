@@ -116,11 +116,13 @@ CREATE TABLE MJV_lector(
  CONSTRAINT MJV_lector_fk_representante FOREIGN KEY (id_representante) REFERENCES MJV_representante(id_representante),
  CONSTRAINT MJV_lector_fk_representante_lector FOREIGN KEY (id_representante_lector) REFERENCES MJV_lector(id_lector),
  CONSTRAINT MJV_lector_fk_pais_nac FOREIGN KEY (id_pais_nac) REFERENCES MJV_pais(id_pais),
- CONSTRAINT MJV_lector_ck_arco CHECK (
-    (id_representante IS NOT NULL AND id_representante_lector IS NULL)
+CONSTRAINT MJV_LECTOR_CK_ARCO CHECK (
+    (id_representante IS NOT NULL AND id_representante_lector IS NULL)  -- Representante externo
     OR
-    (id_representante IS NULL AND id_representante_lector IS NOT NULL)
-  )
+    (id_representante IS NULL AND id_representante_lector IS NOT NULL)  -- Representante lector
+    OR
+    (id_representante IS NULL AND id_representante_lector IS NULL)      -- Mayor de edad
+)
 );
 
 CREATE SEQUENCE MJV_seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;
@@ -260,15 +262,10 @@ CREATE TABLE MJV_preferencia_obra(
   id_lector NUMBER NOT NULL,
   isbn VARCHAR2(20) NOT NULL,
   prioridad NUMBER(1) NOT NULL, -- 1, 2 o 3
- CONSTRAINT MJV_preferencia_obra_pk PRIMARY KEY (id_lector, isbn),
--- ==============================================
--- WARNING: no esta en el (va a lector)
-  --CONSTRAINT MJV_preferencia_obra_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES MJV_historia_membresia(id_lector, id_club, fecha_i),
--- ==============================================
-
- CONSTRAINT MJV_preferencia_obra_fk_libro FOREIGN KEY (isbn) REFERENCES MJV_libro(isbn),
- CONSTRAINT MJV_preferencia_obra_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector(id_lector),
- CONSTRAINT MJV_preferencia_obra_ck_prior CHECK (prioridad IN (1, 2, 3))
+  CONSTRAINT MJV_preferencia_obra_pk PRIMARY KEY (id_lector, isbn),
+  CONSTRAINT MJV_preferencia_obra_fk_libro FOREIGN KEY (isbn) REFERENCES MJV_libro(isbn),
+  CONSTRAINT MJV_preferencia_obra_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector(id_lector),
+  CONSTRAINT MJV_preferencia_obra_ck_prior CHECK (prioridad IN (1, 2, 3))
 );
 
 
@@ -282,9 +279,9 @@ CREATE TABLE MJV_g_lec(
   id_grupo NUMBER NOT NULL,
   fec_i DATE NOT NULL, -- fecha de ingreso al grupo
   fec_f DATE, -- NOTE: NULL mientras el miembro sigue en el grupo
- CONSTRAINT MJV_g_lec_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_grupo, fec_i),
- CONSTRAINT MJV_g_lec_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES MJV_historia_membresia(id_lector, id_club, fecha_i),
- CONSTRAINT MJV_g_lec_fk_grupo FOREIGN KEY (id_grupo, id_club) REFERENCES MJV_grupo(id_grupo, id_club)
+  CONSTRAINT MJV_g_lec_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_grupo, fec_i),
+  CONSTRAINT MJV_g_lec_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES MJV_historia_membresia(id_lector, id_club, fecha_i),
+  CONSTRAINT MJV_g_lec_fk_grupo FOREIGN KEY (id_grupo, id_club) REFERENCES MJV_grupo(id_grupo, id_club)
 );
 
 
@@ -308,11 +305,7 @@ CREATE TABLE MJV_calendario_reunion_mes(
  CONSTRAINT MJV_calendario_reunion_mes_pk PRIMARY KEY (id_grupo, id_club,fecha,isbn),
  CONSTRAINT MJV_calendario_reunion_mes_fk_grupo FOREIGN KEY (id_grupo,id_club) REFERENCES MJV_grupo(id_grupo, id_club),
  CONSTRAINT MJV_calendario_reunion_mes_fk_libro FOREIGN KEY (isbn) REFERENCES MJV_libro(isbn),
-CONSTRAINT MJV_calendario_reunion_mes_fk_g_lec FOREIGN KEY (mod_id_lector, id_club, mod_fecha_i, id_grupo, mod_hist_fecha_i) REFERENCES MJV_g_lec( id_lector, id_club, fecha_i, id_grupo, fec_i ),
--- ==============================================
--- WARNING: no esta en el er (va para g_lec)
-  --CONSTRAINT MJV_calendario_reunion_mes_fk_mod FOREIGN KEY (mod_id_lector, mod_id_club, mod_fecha_i) REFERENCES MJV_historia_membresia(id_lector, id_club, fecha_i),
--- ==============================================
+  CONSTRAINT MJV_calendario_reunion_mes_fk_g_lec FOREIGN KEY (mod_id_lector, id_club, mod_fecha_i, id_grupo, mod_hist_fecha_i) REFERENCES MJV_g_lec( id_lector, id_club, fecha_i, id_grupo, fec_i ),
  CONSTRAINT MJV_calendario_reunion_mes_ck_realizada CHECK (realizada IN ('S', 'N')),
  CONSTRAINT MJV_calendario_reunion_mes_ck_ultima CHECK (ultima IN ('S', 'N')),
  CONSTRAINT MJV_calendario_reunion_mes_ck_val CHECK (valoracion BETWEEN 1 AND 5 OR valoracion IS NULL),
@@ -335,11 +328,6 @@ CREATE TABLE MJV_elenco(
  CONSTRAINT MJV_elenco_pk PRIMARY KEY (id_lector, -- PK Lector
    isbn,id_club,  id_obra_act -- PK obra_actuada
   ),
--- ==============================================
--- WARNING: no esta en el er
---  va para obra_actuada y lector no historia_membresia
-  --CONSTRAINT MJV_elenco_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES MJV_historia_membresia(id_lector, id_club, fecha_i),
--- ==============================================
  CONSTRAINT MJV_elenco_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector(id_lector),
  CONSTRAINT MJV_elenco_fk_obra  FOREIGN KEY (id_obra_act, isbn, id_club) REFERENCES MJV_obra_actuada(id_obra_act, isbn, id_club)
 );
@@ -357,8 +345,7 @@ CREATE TABLE MJV_pago_membresia(
   monto NUMBER(10, 2) NOT NULL,
  CONSTRAINT MJV_pago_membresia_pk PRIMARY KEY (id_lector, id_club, fecha_i, id_pago),
  CONSTRAINT MJV_pago_membresia_fk_lector FOREIGN KEY (id_lector) REFERENCES MJV_lector (id_lector),
- CONSTRAINT MJV_pago_membresia_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES MJV_historia_membresia(id_lector, id_club, fecha_i)
-
+ CONSTRAINT MJV_pago_membresia_fk_hm FOREIGN KEY (id_lector, id_club, fecha_i) REFERENCES MJV_historia_membresia (id_lector, id_club, fecha_i)
 );
 
 
@@ -393,11 +380,6 @@ CREATE TABLE MJV_funcion(
   isbn VARCHAR2(20) NOT NULL,
   id_club NUMBER NOT NULL,
   fecha_funcion DATE NOT NULL,
--- ==============================================
--- WARNING: no esta en el er
---  hora_funcion DATE NOT NULL, -- NOTE: se usa solo la parte de hora (HH24:MI)
---  duracion_minutos NUMBER(3) NOT NULL,
--- ==============================================
   valoracion_obra NUMBER(3, 2), -- promedio de calificaciones del publico (1-5)
   cantidad_asistencia NUMBER NOT NULL,
  CONSTRAINT MJV_funcion_pk PRIMARY KEY (id_funcion, -- PK funcion

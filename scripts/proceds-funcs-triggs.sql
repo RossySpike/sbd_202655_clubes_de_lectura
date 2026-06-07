@@ -1,3 +1,32 @@
+CREATE OR REPLACE TRIGGER MJV_tgr_g_lec_validar_edad
+BEFORE INSERT ON MJV_g_lec 
+FOR EACH ROW
+DECLARE
+  v_años NUMBER;
+  v_tipo_grupo VARCHAR2(10);
+  v_fecha_nac DATE;
+BEGIN
+  SELECT tipo_grupo INTO v_tipo_grupo 
+  FROM MJV_grupo 
+  WHERE id_grupo = :NEW.id_grupo AND id_club = :NEW.id_club;
+  
+  SELECT fecha_nac INTO v_fecha_nac 
+  FROM MJV_lector 
+  WHERE id_lector = :NEW.id_lector;
+  
+  v_años := FLOOR(MONTHS_BETWEEN(SYSDATE, v_fecha_nac) / 12);
+  
+  IF v_años < 13 AND v_tipo_grupo != 'niños' THEN
+    RAISE_APPLICATION_ERROR(-20008, 'Tipo de grupo incorrecto.');
+  END IF;
+  IF v_años BETWEEN 13 AND 25 AND v_tipo_grupo != 'jovenes' THEN
+    RAISE_APPLICATION_ERROR(-20008, 'Tipo de grupo incorrecto.');
+  END IF;
+  IF v_años > 25 AND v_tipo_grupo != 'adultos' THEN
+    RAISE_APPLICATION_ERROR(-20008, 'Tipo de grupo incorrecto.');
+  END IF;
+END;
+/
 -- NOTE: trigger para validar mayoria de edad y necesidad de representante
 CREATE OR REPLACE TRIGGER MJV_tgr_validar_edad
 BEFORE INSERT OR UPDATE ON MJV_lector
@@ -370,35 +399,6 @@ EXCEPTION
 END;
 /
 
-CREATE OR REPLACE TRIGGER MJV_tgr_validar_edad 
-BEFORE INSERT ON MJV_g_lec 
-FOR EACH ROW
-DECLARE
-  v_años NUMBER;
-  v_tipo_grupo VARCHAR2(10);
-  v_fecha_nac DATE;
-BEGIN
-  SELECT tipo_grupo INTO v_tipo_grupo 
-  FROM MJV_grupo 
-  WHERE id_grupo = :NEW.id_grupo AND id_club = :NEW.id_club;
-  
-  SELECT fecha_nac INTO v_fecha_nac 
-  FROM MJV_lector 
-  WHERE id_lector = :NEW.id_lector;
-  
-  v_años := FLOOR(MONTHS_BETWEEN(SYSDATE, v_fecha_nac) / 12);
-  
-  IF v_años < 13 AND v_tipo_grupo != 'niños' THEN
-    RAISE_APPLICATION_ERROR(-20008, 'Tipo de grupo incorrecto.');
-  END IF;
-  IF v_años BETWEEN 13 AND 25 AND v_tipo_grupo != 'jovenes' THEN
-    RAISE_APPLICATION_ERROR(-20008, 'Tipo de grupo incorrecto.');
-  END IF;
-  IF v_años > 25 AND v_tipo_grupo != 'adultos' THEN
-    RAISE_APPLICATION_ERROR(-20008, 'Tipo de grupo incorrecto.');
-  END IF;
-END;
-/
 
 CREATE OR REPLACE TRIGGER MJV_tgr_validar_moderador
 BEFORE INSERT OR UPDATE ON MJV_calendario_reunion_mes
@@ -451,48 +451,133 @@ EXCEPTION
 END;
 /
 --- NOTE: IA
-CREATE OR REPLACE TRIGGER MJV_tgr_moderador_unico
-BEFORE INSERT OR UPDATE ON MJV_calendario_reunion_mes
-FOR EACH ROW
-DECLARE
+CREATE OR REPLACE PROCEDURE MJV_sp_insertar_reunion( -- En lugar de insert usar esto para validaciones, cuando se aplique la seguridad se hace el revoke de insert
+    p_id_club IN NUMBER,
+    p_id_grupo IN NUMBER,
+    p_fecha IN DATE,
+    p_isbn IN VARCHAR2,
+    p_mod_id_lector IN NUMBER,
+    p_mod_fecha_i IN DATE,
+    p_mod_hist_fecha_i IN DATE,
+    p_realizada IN CHAR DEFAULT 'N',
+    p_ultima IN CHAR DEFAULT 'N',
+    p_conclusiones IN VARCHAR2 DEFAULT NULL,
+    p_valoracion IN NUMBER DEFAULT NULL
+) AS
     v_activas NUMBER;
+    v_reuniones NUMBER;
+    v_es_miembro_club NUMBER;
+    v_tipo_grupo VARCHAR2(10);
+    v_es_adulto NUMBER;
 BEGIN
-    -- Contar reuniones activas (no realizadas y no última) que el moderador tiene en el mismo club
+    -- =====================================================
+    -- VALIDACIÓN 1: Moderador debe ser miembro activo del club
+    -- =====================================================
+    SELECT COUNT(*)
+    INTO v_es_miembro_club
+    FROM MJV_g_lec
+    WHERE id_lector = p_mod_id_lector
+      AND id_club = p_id_club
+      AND fec_f IS NULL;
+
+    IF v_es_miembro_club = 0 THEN
+        RAISE_APPLICATION_ERROR(-20030, 
+            'El moderador debe ser un miembro activo del mismo club.');
+    END IF;
+
+    -- =====================================================
+    -- VALIDACIÓN 2: Tipo de grupo y moderador adulto para niños
+    -- =====================================================
+    SELECT tipo_grupo INTO v_tipo_grupo
+    FROM MJV_grupo
+    WHERE id_grupo = p_id_grupo AND id_club = p_id_club;
+
+    IF v_tipo_grupo = 'niños' THEN
+        SELECT COUNT(*)
+        INTO v_es_adulto
+        FROM MJV_g_lec gl
+        JOIN MJV_grupo g ON gl.id_grupo = g.id_grupo AND gl.id_club = g.id_club
+        WHERE gl.id_lector = p_mod_id_lector
+          AND gl.id_club = p_id_club
+          AND gl.fec_f IS NULL
+          AND g.tipo_grupo = 'adultos';
+
+        IF v_es_adulto = 0 THEN
+            RAISE_APPLICATION_ERROR(-20031, 
+                'Para reuniones de niños, el moderador debe ser de un grupo de adultos.');
+        END IF;
+    END IF;
+
+    -- =====================================================
+    -- VALIDACIÓN 3: Moderador no puede tener otra discusión activa
+    -- =====================================================
     SELECT COUNT(*)
     INTO v_activas
     FROM MJV_calendario_reunion_mes
-    WHERE mod_id_lector = :NEW.mod_id_lector
-      AND id_club = :NEW.id_club
-      AND realizada = 'N'        -- Reunión aún no realizada
-      AND ultima = 'N'           -- No es la última (la discusión sigue activa)
-      AND id_grupo != :NEW.id_grupo;  -- Permitir que modere su propio grupo en otra reunión si es distinta
+    WHERE mod_id_lector = p_mod_id_lector
+      AND id_club = p_id_club
+      AND realizada = 'N'
+      AND ultima = 'N';
 
     IF v_activas > 0 THEN
         RAISE_APPLICATION_ERROR(-20033,
-            'El moderador ya está asignado a otra discusión activa en el mismo club.');
+            'El moderador ya está asignado a otra discusión activa.');
     END IF;
-END;
-/
-CREATE OR REPLACE TRIGGER MJV_tgr_max_reuniones_libro
-BEFORE INSERT OR UPDATE ON MJV_calendario_reunion_mes
-FOR EACH ROW
-DECLARE
-    v_reuniones NUMBER;
-BEGIN
-    -- Solo aplicar cuando se va a marcar la reunión como realizada (o al insertar una nueva)
-    IF :NEW.realizada = 'S' THEN
+
+    -- =====================================================
+    -- VALIDACIÓN 4: Máximo 3 reuniones realizadas por libro
+    -- =====================================================
+    IF p_realizada = 'S' THEN
         SELECT COUNT(*)
         INTO v_reuniones
         FROM MJV_calendario_reunion_mes
-        WHERE id_grupo = :NEW.id_grupo
-          AND id_club = :NEW.id_club
-          AND isbn = :NEW.isbn
+        WHERE id_grupo = p_id_grupo
+          AND id_club = p_id_club
+          AND isbn = p_isbn
           AND realizada = 'S';
 
         IF v_reuniones >= 3 THEN
             RAISE_APPLICATION_ERROR(-20034,
-                'Ya se han realizado 3 reuniones para este libro. No se pueden programar más.');
+                'Ya se han realizado 3 reuniones para este libro.');
         END IF;
     END IF;
+
+    -- =====================================================
+    -- VALIDACIÓN 5: Si es última reunión, conclusiones y valoración son obligatorias
+    -- =====================================================
+    IF p_ultima = 'S' THEN
+        IF p_conclusiones IS NULL OR p_valoracion IS NULL THEN
+            RAISE_APPLICATION_ERROR(-20035,
+                'Para la última reunión, conclusiones y valoración son obligatorias.');
+        END IF;
+        
+        -- Validar rango de valoración
+        IF p_valoracion < 1 OR p_valoracion > 5 THEN
+            RAISE_APPLICATION_ERROR(-20036,
+                'La valoración debe estar entre 1 y 5.');
+        END IF;
+    END IF;
+
+    -- =====================================================
+    -- INSERT (todas las validaciones pasaron)
+    -- =====================================================
+    INSERT INTO MJV_calendario_reunion_mes (
+        id_club, id_grupo, fecha, isbn,
+        mod_id_lector, mod_fecha_i, mod_hist_fecha_i,
+        realizada, ultima, conclusiones, valoracion
+    ) VALUES (
+        p_id_club, p_id_grupo, p_fecha, p_isbn,
+        p_mod_id_lector, p_mod_fecha_i, p_mod_hist_fecha_i,
+        p_realizada, p_ultima, p_conclusiones, p_valoracion
+    );
+
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('✅ Reunión insertada correctamente.');
+
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('❌ Error: ' || SQLERRM);
+        RAISE;
 END;
 /
