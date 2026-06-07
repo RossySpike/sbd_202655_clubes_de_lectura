@@ -127,13 +127,16 @@ Para optimizar las consultas y evitar bloqueos en el motor relacional Oracle, se
 
 ### 4. Vistas Lógicas Requeridas
 
-- [ ] **`v_ficha_lector`:** Consolida los datos personales del miembro, club actual, grupo, histórico de afiliación, obras preferidas y lista de libros leídos/analizados.
-- [ ] **`v_ficha_club`:** Reporta datos generales del club, recuento de grupos por categorías (adultos, jóvenes, niños) y catálogo histórico de libros evaluados por los grupos, ordenados de mayor a menor valoración.
+- [X] **`v_ficha_lector`** *(COMPLEJA)*: Consolida los datos personales del miembro, club actual, grupo, histórico de afiliación, obras preferidas y lista de libros leídos/analizados.
+- [X] **`v_ficha_club`** *(COMPLEJA)*: Reporta datos generales del club, recuento de grupos por categorías (adultos, jóvenes, niños) y catálogo histórico de libros evaluados por los grupos, ordenados de mayor a menor valoración.
 - [ ] **`v_ficha_libro`:** Consolida datos del libro, puntuación promedio de valoración general e histórico de grupos que lo analizaron con sus respectivas conclusiones.
 - [ ] **`v_crecimiento_clubes`:** Genera y procesa las estadísticas del porcentaje de crecimiento anual de miembros por país y crecimiento económico en ingresos de membresías.
 - [ ] **`v_obras_presentadas`:** Genera un histórico de las obras actuadas por club con su valoración promedio e ingresos acumulados en taquilla.
-- [ ] **`v_reuniones_mes`:** Detalla la programación mensual del calendario de debates.
+- [X] **`v_reuniones_mes`** *(COMPLEJA)*: Detalla la programación mensual del calendario de debates con club, tipo de grupo, hora, libro en discusión, moderador y estado.
 - [ ] **`v_asistencia_bimestre`:** Totaliza el porcentaje de inasistencias bimestrales por lector y club.
+- [X] **`v_participacion_mensual_tipo_grupo`** *(COMPLEJA)*: Agrega el total de reuniones realizadas, inasistencias y % de participación por club, tipo de grupo, mes y año — base de cálculo de la función `promedio_part_mensual_tipo_grupo()`.
+- [X] **`v_directorio_lector`** *(SIMPLE)*: Directorio público de lectores con datos de contacto; oculta `doc_identidad` y traduce códigos internos (género F/M).
+- [X] **`v_catalogo_libros`** *(SIMPLE)*: Catálogo editorial de libros registrados (isbn, título, tipo, género, edición, páginas) sin campos de texto largo.
 
 ### 5. Funciones PL/SQL o Equivalentes
 
