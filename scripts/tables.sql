@@ -431,31 +431,40 @@ CREATE TABLE MJV_mejor_actor(
 -- =============================================================================
 
 -- Indices en llaves foraneas (evitan lock escalation en Oracle al hacer DELETE/UPDATE en tablas padre)
-CREATE INDEX MJV_idx_asociado_der              ON MJV_asociado(id_club_der);
+-- CREATE INDEX MJV_idx_asociado_der              ON MJV_asociado(id_club_der);
 CREATE INDEX MJV_idx_lector_rep               ON MJV_lector(id_representante);
 CREATE INDEX MJV_idx_lector_rep_lec           ON MJV_lector(id_representante_lector);
 CREATE INDEX MJV_idx_lector_pais_nac          ON MJV_lector(id_pais_nac);
-CREATE INDEX MJV_idx_idioma_miembro_club      ON MJV_idioma_miembro(id_club);
-CREATE INDEX MJV_idx_idioma_miembro_lector    ON MJV_idioma_miembro(id_lector);
-CREATE INDEX MJV_idx_libro_pais               ON MJV_libro(id_pais);
-CREATE INDEX MJV_idx_libro_sig                ON MJV_libro(id_libro_siguiente);
-CREATE INDEX MJV_idx_libro_autor_isbn         ON MJV_libro_autor(isbn);
-CREATE INDEX MJV_idx_grupo_club               ON MJV_grupo(id_club);
+-- CREATE INDEX MJV_idx_idioma_miembro_club      ON MJV_idioma_miembro(id_club);
+-- CREATE INDEX MJV_idx_idioma_miembro_lector    ON MJV_idioma_miembro(id_lector);
+-- CREATE INDEX MJV_idx_libro_pais               ON MJV_libro(id_pais);
+-- CREATE INDEX MJV_idx_libro_sig                ON MJV_libro(id_libro_siguiente);
+-- CREATE INDEX MJV_idx_libro_autor_isbn         ON MJV_libro_autor(isbn);
+-- CREATE INDEX MJV_idx_grupo_club               ON MJV_grupo(id_club);
 CREATE INDEX MJV_idx_historia_membresia_club  ON MJV_historia_membresia(id_club);
 CREATE INDEX MJV_idx_preferencia_obra_isbn    ON MJV_preferencia_obra(isbn);
 CREATE INDEX MJV_idx_g_lec_grupo              ON MJV_g_lec(id_grupo);
-CREATE INDEX MJV_idx_calendario_isbn          ON MJV_calendario_reunion_mes(isbn);
-CREATE INDEX MJV_idx_calendario_mod           ON MJV_calendario_reunion_mes(mod_id_lector, id_club, mod_fecha_i);
-CREATE INDEX MJV_idx_obra_actuada_isbn        ON MJV_obra_actuada(isbn);
-CREATE INDEX MJV_idx_obra_actuada_club        ON MJV_obra_actuada(id_club);
-CREATE INDEX MJV_idx_funcion_obra             ON MJV_funcion(id_obra_act);
-CREATE INDEX MJV_idx_elenco_obra              ON MJV_elenco(id_obra_act);
-CREATE INDEX MJV_idx_mejor_actor_elenco       ON MJV_mejor_actor(id_lector, id_club, fecha_i, id_obra_act);
+-- CREATE INDEX MJV_idx_calendario_isbn          ON MJV_calendario_reunion_mes(isbn);
+-- CREATE INDEX MJV_idx_calendario_mod           ON MJV_calendario_reunion_mes(mod_id_lector, id_club, mod_fecha_i);
+-- CREATE INDEX MJV_idx_obra_actuada_isbn        ON MJV_obra_actuada(isbn);
+-- CREATE INDEX MJV_idx_obra_actuada_club        ON MJV_obra_actuada(id_club);
+-- CREATE INDEX MJV_idx_funcion_obra             ON MJV_funcion(id_obra_act);
+-- CREATE INDEX MJV_idx_elenco_obra              ON MJV_elenco(id_obra_act);
+-- CREATE INDEX MJV_idx_mejor_actor_elenco       ON MJV_mejor_actor(id_lector, id_club, fecha_i, id_obra_act);
+-- SUGERIDO: este índice podría ser redundante o no utilizado según el orden de filtros en las consultas.
 
 -- Indices para busquedas frecuentes
-CREATE INDEX MJV_idx_lector_busqueda          ON MJV_lector(p_apellido, p_nombre);
-CREATE INDEX MJV_idx_libro_titulo             ON MJV_libro(titulo);
-CREATE INDEX MJV_idx_club_nombre              ON MJV_club(nombre_club);
+-- CREATE INDEX MJV_idx_lector_busqueda          ON MJV_lector(p_apellido, p_nombre);
+-- CREATE INDEX MJV_idx_libro_titulo             ON MJV_libro(titulo);
+-- CREATE INDEX MJV_idx_club_nombre              ON MJV_club(nombre_club);
+-- SUGERIDO: comentar/retirar los índices anteriores si las búsquedas usan funciones, LIKE con %% inicial o búsquedas de texto libre.
+
+-- SUGERIDOS DROP (ejecutar solo si confirmas en la BD):
+-- DROP INDEX MJV_idx_lector_busqueda;
+-- DROP INDEX MJV_idx_libro_titulo;
+-- DROP INDEX MJV_idx_club_nombre;
+-- DROP INDEX MJV_idx_calendario_mod;
+-- DROP INDEX MJV_idx_mejor_actor_elenco;
 
 
 -- =============================================================================

@@ -1,0 +1,79 @@
+
+He agregado al final del archivo inserts.sql un par de reuniones marcadas como *realizadas* (`realizada = 'S'`) junto con sus respectivas inasistencias en la tabla `MJV_inasistencia`. 
+
+De esta forma puedes probar matemáticamente ambas funciones y ver los decuentos aplicados. Inserté lo siguiente para el club **"Refugio Literario del Sur"** (Grupo de adultos, Bimestre 1 - Enero de 2026):
+
+1. **2 reuniones realizadas:**
+   - 28/01/2026 y 30/01/2026.
+2. **Inasistencias vinculadas:**
+   - El lector **V-ADU02** falta a las dos reuniones (100% inasistencia, participación individual del 0%).
+   - El lector **V-ADU03** falta a una de las dos reuniones (50% inasistencia, participación individual del 50%).
+   - El resto de los lectores (como `V-ADU01` y `V-ADU04`) no tienen inasistencias, así que tendrán un 100% de participación.
+
+Si ejecutas de nuevo el script inserts.sql y pruebas las funciones, obtendrás números reales.
+Por ejemplo, aquí tienes **las consultas para probar las funciones directamente con estos nuevos datos en SQL*Plus o tu cliente Oracle**:
+
+### 1. Probar Participación en Bimestre por Miembro
+*(El lector V-ADU02 faltó 2 de 2 veces en el bimestre 1. Debería arrojar **0%** de participación)*
+```sql
+SELECT 
+  doc_identidad, 
+  MJV_participacion_bimestre_miembro(
+    id_lector, 
+    (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'), 
+    1, -- Bimestre 1 (Ene-Feb)
+    2026
+  ) AS porcentaje_asistencia
+FROM MJV_lector
+WHERE doc_identidad IN ('V-ADU01', 'V-ADU02', 'V-ADU03');
+-- V-ADU01 debería dar 100
+-- V-ADU02 debería dar 0
+-- V-ADU03 debería dar 50
+```
+
+### 2. Probar Promedio Mensual por Tipo de Grupo
+*(Promedio general entre los grupos del tipo 'adultos' en el mes de Enero).*
+```sql
+SELECT MJV_promedio_part_mensual_tipo_grupo(
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  'adultos',
+  1, -- Mes: Enero
+  2026 -- Año
+) AS prov_grupo_mensual
+FROM DUAL;
+```
+*(Debería resultar en 62.5% ya que el grupo de adultos tiene 4 miembros, 2 reuniones = 8 llegadas esperadas. Tienen 3 faltas en total, entonces (8 - 3)/8*100 = 62.5%).*
+
+Ya puedes recargar la BD o ejecutar el archivo de inserción y constatar los datos en el sistema. ¿Te ayuda con esto a visualizar mejor cómo cruzan los datos en tus funciones?
+
+Made changes.
+
+
+----------------------------------
+----------------------------------
+----------------------------------
+
+
+
+Listo. He añadido una inasistencia para el lector **V-ADU04** en la segunda reunión (30/01/2026). Esto crea una alineación perfecta del 50% en las dos funciones.
+
+Ahora el panorama es el siguiente para el grupo de adultos de "Refugio Literario del Sur" en enero (2 reuniones realizadas):
+- `V-ADU01`: 0 faltas => **100%** de participación en el bimestre.
+- `V-ADU02`: 2 faltas => **0%** de participación en el bimestre.
+- `V-ADU03`: 1 falta => **50%** de participación en el bimestre.
+- `V-ADU04`: 1 falta => **50%** de participación en el bimestre *(el nuevo que agregué)*.
+
+**¿Qué logramos con esto?** 
+Que el promedio general del grupo en el mes pase a ser exactamente **50%**, porque de 8 asistencias esperadas (4 miembros x 2 reuniones), ahora hay en total 4 faltas registradas. `((8 - 4) / 8) * 100 = 50%`.
+
+Puedes recargar los inserts en un cliente Oracle, y al ejecutar:
+```sql
+SELECT MJV_promedio_part_mensual_tipo_grupo(
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  'adultos', 1, 2026
+) AS prom_grupo_mensual
+FROM DUAL;
+```
+El resultado será exactamente **50**. Además, tanto `V-ADU03` como `V-ADU04` tendrán 50% en la participación individual si verificas la función por bimestre.
+
+Made changes.
