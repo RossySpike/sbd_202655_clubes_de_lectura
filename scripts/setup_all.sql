@@ -431,31 +431,15 @@ CREATE TABLE MJV_mejor_actor(
 -- =============================================================================
 
 -- Indices en llaves foraneas (evitan lock escalation en Oracle al hacer DELETE/UPDATE en tablas padre)
-CREATE INDEX MJV_idx_asociado_der              ON MJV_asociado(id_club_der);
 CREATE INDEX MJV_idx_lector_rep               ON MJV_lector(id_representante);
 CREATE INDEX MJV_idx_lector_rep_lec           ON MJV_lector(id_representante_lector);
 CREATE INDEX MJV_idx_lector_pais_nac          ON MJV_lector(id_pais_nac);
-CREATE INDEX MJV_idx_idioma_miembro_club      ON MJV_idioma_miembro(id_club);
-CREATE INDEX MJV_idx_idioma_miembro_lector    ON MJV_idioma_miembro(id_lector);
-CREATE INDEX MJV_idx_libro_pais               ON MJV_libro(id_pais);
-CREATE INDEX MJV_idx_libro_sig                ON MJV_libro(id_libro_siguiente);
-CREATE INDEX MJV_idx_libro_autor_isbn         ON MJV_libro_autor(isbn);
-CREATE INDEX MJV_idx_grupo_club               ON MJV_grupo(id_club);
 CREATE INDEX MJV_idx_historia_membresia_club  ON MJV_historia_membresia(id_club);
 CREATE INDEX MJV_idx_preferencia_obra_isbn    ON MJV_preferencia_obra(isbn);
 CREATE INDEX MJV_idx_g_lec_grupo              ON MJV_g_lec(id_grupo);
-CREATE INDEX MJV_idx_calendario_isbn          ON MJV_calendario_reunion_mes(isbn);
-CREATE INDEX MJV_idx_calendario_mod           ON MJV_calendario_reunion_mes(mod_id_lector, id_club, mod_fecha_i);
-CREATE INDEX MJV_idx_obra_actuada_isbn        ON MJV_obra_actuada(isbn);
-CREATE INDEX MJV_idx_obra_actuada_club        ON MJV_obra_actuada(id_club);
-CREATE INDEX MJV_idx_funcion_obra             ON MJV_funcion(id_obra_act);
-CREATE INDEX MJV_idx_elenco_obra              ON MJV_elenco(id_obra_act);
-CREATE INDEX MJV_idx_mejor_actor_elenco       ON MJV_mejor_actor(id_lector, id_club, fecha_i, id_obra_act);
 
 -- Indices para busquedas frecuentes
-CREATE INDEX MJV_idx_lector_busqueda          ON MJV_lector(p_apellido, p_nombre);
-CREATE INDEX MJV_idx_libro_titulo             ON MJV_libro(titulo);
-CREATE INDEX MJV_idx_club_nombre              ON MJV_club(nombre_club);
+
 
 
 -- =============================================================================
@@ -465,6 +449,7 @@ SELECT object_type, COUNT(*)
 FROM user_objects
 WHERE object_type IN ('TABLE', 'SEQUENCE', 'TRIGGER', 'INDEX')
 GROUP BY object_type;
+
 -- =============================================================================
 -- INSERTS: TABLAS DE ENTRADA (E) USANDO SECUENCIAS (DEFAULT) Y SUBCONSULTAS
 -- =============================================================================
@@ -1813,7 +1798,97 @@ INSERT INTO MJV_elenco (id_lector, isbn, id_club, id_obra_act) VALUES (
   (SELECT id_obra_act FROM MJV_obra_actuada WHERE titulo = 'Snow Crash: El Metaverso' AND id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Club de Lectura Guayana'))
 );
 
+-- =============================================================================
+-- 20. REUNIONES REALIZADAS E INASISTENCIAS PARA PRUEBAS DE PORCENTAJES
+-- =============================================================================
+-- Insertamos una reunión realizada ('S') en el mes de Enero (Bimestre 1)
+INSERT INTO MJV_calendario_reunion_mes (
+  id_club, id_grupo, fecha, isbn,
+  mod_id_lector, mod_fecha_i, mod_hist_fecha_i,
+  realizada, ultima, conclusiones, valoracion
+) VALUES (
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'),
+  '9788466631174',
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU01'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  'S', 'N', NULL, NULL
+);
+
+-- Insertamos otra reunión realizada ('S') para tener más datos (Bimestre 1, mes Enero)
+INSERT INTO MJV_calendario_reunion_mes (
+  id_club, id_grupo, fecha, isbn,
+  mod_id_lector, mod_fecha_i, mod_hist_fecha_i,
+  realizada, ultima, conclusiones, valoracion
+) VALUES (
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'),
+  '9788466631174',
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU01'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  'S', 'N', NULL, NULL
+);
+
+-- Inasistencias
+-- V-ADU02 falta a la primera reunión (28/01/2026) -> Tendrá 1 inasistencia
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU02'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'),
+  '9788466631174'
+);
+
+-- V-ADU02 también falta a la segunda (30/01/2026) -> Tendrá 0% de asistencia en este bimestre
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU02'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'),
+  '9788466631174'
+);
+
+-- V-ADU03 falta a la primera reunión (28/01/2026) solo 1 falta -> Tendrá 50% de asistencia
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU03'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'),
+  '9788466631174'
+);
+
+-- V-ADU04 falta a la segunda reunión (30/01/2026) -> Tendrá 50% de asistencia en el bimestre y el promedio general del grupo mensual bajará a exactamente 50% (4 faltas de 8 posibles)
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU04'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'),
+  '9788466631174'
+);
+
 COMMIT;
+
+
 -- TIPO: SIMPLE (una sola tabla, sin GROUP BY, sin ORDER BY)
 -- Directorio publico de lectores: datos de contacto sin doc_identidad (informacion sensible).
 -- Traduce genero F/M a texto legible con DECODE.
@@ -2205,7 +2280,8 @@ GROUP BY
   g.id_grupo,
   g.tipo_grupo;
 
-  CREATE OR REPLACE TRIGGER MJV_tgr_g_lec_validar_edad
+  
+CREATE OR REPLACE TRIGGER MJV_tgr_g_lec_validar_edad
 BEFORE INSERT ON MJV_g_lec 
 FOR EACH ROW
 DECLARE
