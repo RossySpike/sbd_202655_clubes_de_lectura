@@ -1346,4 +1346,93 @@ INSERT INTO MJV_elenco (id_lector, isbn, id_club, id_obra_act) VALUES (
   (SELECT id_obra_act FROM MJV_obra_actuada WHERE titulo = 'Snow Crash: El Metaverso' AND id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Club de Lectura Guayana'))
 );
 
+-- =============================================================================
+-- 20. REUNIONES REALIZADAS E INASISTENCIAS PARA PRUEBAS DE PORCENTAJES
+-- =============================================================================
+-- Insertamos una reunión realizada ('S') en el mes de Enero (Bimestre 1)
+INSERT INTO MJV_calendario_reunion_mes (
+  id_club, id_grupo, fecha, isbn,
+  mod_id_lector, mod_fecha_i, mod_hist_fecha_i,
+  realizada, ultima, conclusiones, valoracion
+) VALUES (
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'),
+  '9788466631174',
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU01'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  'S', 'N', NULL, NULL
+);
+
+-- Insertamos otra reunión realizada ('S') para tener más datos (Bimestre 1, mes Enero)
+INSERT INTO MJV_calendario_reunion_mes (
+  id_club, id_grupo, fecha, isbn,
+  mod_id_lector, mod_fecha_i, mod_hist_fecha_i,
+  realizada, ultima, conclusiones, valoracion
+) VALUES (
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'),
+  '9788466631174',
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU01'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  'S', 'N', NULL, NULL
+);
+
+-- Inasistencias
+-- V-ADU02 falta a la primera reunión (28/01/2026) -> Tendrá 1 inasistencia
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU02'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'),
+  '9788466631174'
+);
+
+-- V-ADU02 también falta a la segunda (30/01/2026) -> Tendrá 0% de asistencia en este bimestre
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU02'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'),
+  '9788466631174'
+);
+
+-- V-ADU03 falta a la primera reunión (28/01/2026) solo 1 falta -> Tendrá 50% de asistencia
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU03'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'),
+  '9788466631174'
+);
+
+-- V-ADU04 falta a la segunda reunión (30/01/2026) -> Tendrá 50% de asistencia en el bimestre y el promedio general del grupo mensual bajará a exactamente 50% (4 faltas de 8 posibles)
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU04'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'),
+  '9788466631174'
+);
+
 COMMIT;
+
