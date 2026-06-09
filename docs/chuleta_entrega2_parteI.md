@@ -164,6 +164,14 @@ WHERE l.doc_identidad IN ('V-ADU01', 'V-JOV01', 'V-NIN01')
 ORDER BY l.doc_identidad;
 ```
 
+**Resultados esperados (al 08/06/2026):**
+
+| doc_identidad | fecha_nac  | edad_actual |
+| ------------- | ---------- | ----------- |
+| V-ADU01       | 22/07/1985 | **40**  |
+| V-JOV01       | 09/07/2009 | **16**  |
+| V-NIN01       | 02/03/2016 | **10**  |
+
 > Si la profe pregunta por qué TRUNC y no FLOOR o ROUND: ROUND podría sumar un año antes del cumpleaños; FLOOR funciona igual que TRUNC para positivos, pero TRUNC es semánticamente más claro en fechas en Oracle.
 
 ---
@@ -197,7 +205,16 @@ WHERE hm.id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Li
 ORDER BY l.doc_identidad;
 ```
 
-> Todos los miembros entraron el 01/01/2026 y hoy es 2026, así que el resultado será 0 años (menos de 12 meses). Ese es el resultado correcto — si la profe cuestiona, confirmar que la función es correcta y los datos son recientes.
+**Resultados esperados (al 08/06/2026):**
+
+| doc_identidad | nombre           | anios_en_club | Ingresó al club |
+| ------------- | ---------------- | ------------- | ---------------- |
+| V-ADU01       | Alejandro García | **0**   | 18/07/2024       |
+| V-ADU02       | Beatriz Rodríguez| **0**   | 24/06/2024       |
+| V-ADU03       | Carlos López     | **2**   | 22/12/2023       |
+| V-ADU04       | Diana Martínez   | **1**   | 03/02/2025       |
+
+> ADU01 y ADU02 llevan menos de 12 meses → 0 años (correcto). ADU03 lleva ~29 meses → 2 años. ADU04 lleva ~16 meses → 1 año. La función usa TRUNC, no redondea hacia arriba.
 
 ---
 
