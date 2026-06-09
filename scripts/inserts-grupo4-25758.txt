@@ -1,6 +1,6 @@
 --------------------------------------------------------------------
 -- INSERTS -- GRUPO 4 -- 25758
-- JOHNNY CAMERO - 
+- JOHNNY CAMERO - 31721753
 - MARCO DELGADO - 31066026
 - VALERIA VELASCO - 31123309
 --------------------------------------------------------------------
@@ -1334,6 +1334,7 @@ INSERT INTO MJV_elenco (id_lector, isbn, id_club, id_obra_act) VALUES (
   (SELECT id_club FROM MJV_club WHERE nombre_club = 'Club de Lectura Guayana'),
   (SELECT id_obra_act FROM MJV_obra_actuada WHERE titulo = 'Snow Crash: El Metaverso' AND id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Club de Lectura Guayana'))
 );
+
 
 /*
 -- 20. INASISTENCIAS (OPCIONAL SI NECESARIO PARA DEMOSTRACION DE FUNCIONES)
