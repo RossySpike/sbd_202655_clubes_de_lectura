@@ -1990,7 +1990,7 @@ JOIN  MJV_lector                 lm ON  lm.id_lector = cr.mod_id_lector;
 -- Base de calculo de la funcion MJV_promedio_part_mensual_tipo_grupo().
 CREATE OR REPLACE VIEW MJV_v_participacion_mensual_tipo_grupo
   (id_club, nombre_club, tipo_grupo, mes, anio,
-   total_reuniones, total_inasistencias, pct_participacion)
+   total_inasistencias, total_reuniones, pct_participacion)
 AS
 SELECT
   c.id_club,
@@ -2242,11 +2242,13 @@ GROUP BY
   li.titulo;
 
   -- TIPO: COMPLEJA (CTE + Agrupaciones Temporales Bimestrales + Funciones Matemáticas + LEFT JOIN)
--- Auditoría operativa de ausencias: calcula el porcentaje neto de inasistencias por bimestre 
--- calendario de cada lector según el grupo al que pertenecía durante la ejecución de las reuniones.
+-- Auditoría operativa de ausencias: calcula el porcentaje neto de inasistencias Y de participación
+-- por bimestre calendario de cada lector según el grupo al que pertenecía durante las reuniones.
+-- pct_inasistencia : faltas / esperadas * 100  (auditoría de ausencias)
+-- pct_participacion: 100 - pct_inasistencia    (coincide con MJV_participacion_bimestre_miembro)
 CREATE OR REPLACE VIEW MJV_v_asistencia_bimestre
   (anio, bimestre, id_lector, nombre_lector, id_club, nombre_club, id_grupo, tipo_grupo,
-   reuniones_ejecutadas, inasistencias_registradas, pct_inasistencia)
+   reuniones_ejecutadas, inasistencias_registradas, pct_participacion, pct_inasistencia)
 AS
 WITH universo_reuniones AS (
   SELECT 
@@ -2270,10 +2272,16 @@ SELECT
   INITCAP(g.tipo_grupo),
   COUNT(DISTINCT ur.fecha || '|' || ur.isbn) AS reuniones_ejecutadas,
   COUNT(i.fecha_reunion) AS inasistencias_registradas,
+  -- % de inasistencia: para auditoría de ausencias
   ROUND(
     (COUNT(i.fecha_reunion) * 100) / 
     NULLIF(COUNT(DISTINCT ur.fecha || '|' || ur.isbn), 0), 2
-  ) AS pct_inasistencia
+  ) AS pct_inasistencia,
+  -- % de participación: complemento, coincide con MJV_participacion_bimestre_miembro()
+  ROUND(
+    100 - (COUNT(i.fecha_reunion) * 100) / 
+    NULLIF(COUNT(DISTINCT ur.fecha || '|' || ur.isbn), 0), 2
+  ) AS pct_participacion
 FROM MJV_g_lec gl
 JOIN MJV_lector l  ON l.id_lector = gl.id_lector
 JOIN MJV_club c    ON c.id_club = gl.id_club

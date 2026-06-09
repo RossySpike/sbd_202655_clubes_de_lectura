@@ -233,6 +233,8 @@ SELECT MJV_promedio_part_mensual_tipo_grupo(
 SELECT * FROM MJV_v_participacion_mensual_tipo_grupo
 WHERE nombre_club = 'Refugio Literario del Sur'
   AND mes = 1 AND anio = 2026;
+-- Columna a mirar: PCT_PARTICIPACION (= 50)
+-- TOTAL_INASISTENCIAS muestra el conteo bruto (4), que sirve de auditoría
 ```
 
 ---
@@ -293,7 +295,13 @@ ORDER BY l.doc_identidad;
 SELECT * FROM MJV_v_asistencia_bimestre
 WHERE nombre_club = 'Refugio Literario del Sur'
   AND bimestre = 1 AND anio = 2026;
+-- Columna a mirar: PCT_PARTICIPACION (mismo valor que la función)
+-- PCT_INASISTENCIA es el complemento, se usa para auditoría de ausencias
 ```
+
+> **Aclarar si la profe pregunta por las dos columnas:** la vista expone ambas perspectivas —
+> `pct_inasistencia` = faltas / esperadas × 100 (cuánto faltó, para detectar retiros)
+> `pct_participacion` = 100 − pct_inasistencia (cuánto asistió, lo que retorna la función)
 
 > Punto de conexión con la regla de negocio: V-ADU02 tiene 0% → supera el 30% de inasistencias del bimestre → es candidato a retiro según las reglas del enunciado (pág. X). `MJV_inasistencia` es tipo Salida precisamente porque registra este evento para que el sistema pueda tomar esa acción.
 
