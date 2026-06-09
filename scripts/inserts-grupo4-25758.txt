@@ -1334,3 +1334,58 @@ INSERT INTO MJV_elenco (id_lector, isbn, id_club, id_obra_act) VALUES (
   (SELECT id_club FROM MJV_club WHERE nombre_club = 'Club de Lectura Guayana'),
   (SELECT id_obra_act FROM MJV_obra_actuada WHERE titulo = 'Snow Crash: El Metaverso' AND id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Club de Lectura Guayana'))
 );
+
+/*
+-- 20. INASISTENCIAS (OPCIONAL SI NECESARIO PARA DEMOSTRACION DE FUNCIONES)
+
+-- V-ADU02: ingresó a g_lec el 24/06/2024. Falta a las dos reuniones → 0 % de participación.
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU02'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('24/06/2024', 'DD/MM/YYYY'), -- fecha_i historia_membresia de V-ADU02
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('24/06/2024', 'DD/MM/YYYY'), -- fec_i g_lec de V-ADU02
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'), -- reunión 1
+  '9788466631174'
+);
+
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU02'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('24/06/2024', 'DD/MM/YYYY'), -- fecha_i historia_membresia de V-ADU02
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('24/06/2024', 'DD/MM/YYYY'), -- fec_i g_lec de V-ADU02
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'), -- reunión 2
+  '9788466631174'
+);
+
+-- V-ADU03: ingresó a g_lec el 22/12/2023. Falta solo a la reunión 1 → 50 % de participación.
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU03'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('22/12/2023', 'DD/MM/YYYY'), -- fecha_i historia_membresia de V-ADU03
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('22/12/2023', 'DD/MM/YYYY'), -- fec_i g_lec de V-ADU03
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'), -- reunión 1
+  '9788466631174'
+);
+
+-- V-ADU04: ingresó a g_lec el 03/02/2025. Falta solo a la reunión 2 → 50 % de participación.
+INSERT INTO MJV_inasistencia (
+  id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
+) VALUES (
+  (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU04'),
+  (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
+  TO_DATE('03/02/2025', 'DD/MM/YYYY'), -- fecha_i historia_membresia de V-ADU04
+  (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
+  TO_DATE('03/02/2025', 'DD/MM/YYYY'), -- fec_i g_lec de V-ADU04
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'), -- reunión 2
+  '9788466631174'
+);
+-- V-ADU01: sin inasistencias → 100 % de participación. */ 
