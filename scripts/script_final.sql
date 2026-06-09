@@ -1830,7 +1830,9 @@ INSERT INTO MJV_elenco (id_lector, isbn, id_club, id_obra_act) VALUES (
 -- =============================================================================
 -- 20. REUNIONES REALIZADAS E INASISTENCIAS PARA PRUEBAS DE PORCENTAJES
 -- =============================================================================
--- Insertamos una reunión realizada ('S') en el mes de Enero (Bimestre 1)
+-- Moderador V-ADU01 ingresó al g_lec el 18/07/2024 → esas son las fechas que
+-- satisfacen la FK MJV_calendario_reunion_mes_fk_g_lec hacia MJV_g_lec.
+-- Reunión realizada ('S') #1 — 28/01/2026, Bimestre 1
 INSERT INTO MJV_calendario_reunion_mes (
   id_club, id_grupo, fecha, isbn,
   mod_id_lector, mod_fecha_i, mod_hist_fecha_i,
@@ -1841,12 +1843,12 @@ INSERT INTO MJV_calendario_reunion_mes (
   TO_DATE('28/01/2026', 'DD/MM/YYYY'),
   '9788466631174',
   (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU01'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('18/07/2024', 'DD/MM/YYYY'), -- fecha_i del g_lec de V-ADU01
+  TO_DATE('18/07/2024', 'DD/MM/YYYY'), -- fec_i del g_lec de V-ADU01
   'S', 'N', NULL, NULL
 );
 
--- Insertamos otra reunión realizada ('S') para tener más datos (Bimestre 1, mes Enero)
+-- Reunión realizada ('S') #2 — 30/01/2026, Bimestre 1
 INSERT INTO MJV_calendario_reunion_mes (
   id_club, id_grupo, fecha, isbn,
   mod_id_lector, mod_fecha_i, mod_hist_fecha_i,
@@ -1857,64 +1859,66 @@ INSERT INTO MJV_calendario_reunion_mes (
   TO_DATE('30/01/2026', 'DD/MM/YYYY'),
   '9788466631174',
   (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU01'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('18/07/2024', 'DD/MM/YYYY'), -- fecha_i del g_lec de V-ADU01
+  TO_DATE('18/07/2024', 'DD/MM/YYYY'), -- fec_i del g_lec de V-ADU01
   'S', 'N', NULL, NULL
 );
 
--- V-ADU02 falta a la primera reunión (28/01/2026) -> Tendrá 1 inasistencia
+-- INASISTENCIAS
+-- Cada fila referencia MJV_g_lec mediante (id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec).
+-- Las fechas deben coincidir EXACTAMENTE con las usadas en los inserts de MJV_g_lec (sección 13).
+
+-- V-ADU02: ingresó a g_lec el 24/06/2024. Falta a las dos reuniones → 0 % de participación.
 INSERT INTO MJV_inasistencia (
   id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
 ) VALUES (
   (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU02'),
   (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('24/06/2024', 'DD/MM/YYYY'), -- fecha_i historia_membresia de V-ADU02
   (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
-  TO_DATE('28/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('24/06/2024', 'DD/MM/YYYY'), -- fec_i g_lec de V-ADU02
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'), -- reunión 1
   '9788466631174'
 );
 
--- V-ADU02 también falta a la segunda (30/01/2026) -> Tendrá 0% de asistencia en este bimestre
 INSERT INTO MJV_inasistencia (
   id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
 ) VALUES (
   (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU02'),
   (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('24/06/2024', 'DD/MM/YYYY'), -- fecha_i historia_membresia de V-ADU02
   (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
-  TO_DATE('30/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('24/06/2024', 'DD/MM/YYYY'), -- fec_i g_lec de V-ADU02
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'), -- reunión 2
   '9788466631174'
 );
 
--- V-ADU03 falta a la primera reunión (28/01/2026) solo 1 falta -> Tendrá 50% de asistencia
+-- V-ADU03: ingresó a g_lec el 22/12/2023. Falta solo a la reunión 1 → 50 % de participación.
 INSERT INTO MJV_inasistencia (
   id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
 ) VALUES (
   (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU03'),
   (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('22/12/2023', 'DD/MM/YYYY'), -- fecha_i historia_membresia de V-ADU03
   (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
-  TO_DATE('28/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('22/12/2023', 'DD/MM/YYYY'), -- fec_i g_lec de V-ADU03
+  TO_DATE('28/01/2026', 'DD/MM/YYYY'), -- reunión 1
   '9788466631174'
 );
 
--- V-ADU04 falta a la segunda reunión (30/01/2026) -> Tendrá 50% de asistencia en el bimestre
--- Con esto el promedio general del grupo mensual baja a exactamente 50% (4 faltas de 8 posibles)
+-- V-ADU04: ingresó a g_lec el 03/02/2025. Falta solo a la reunión 2 → 50 % de participación.
 INSERT INTO MJV_inasistencia (
   id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec, fecha_reunion, isbn
 ) VALUES (
   (SELECT id_lector FROM MJV_lector WHERE doc_identidad = 'V-ADU04'),
   (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('03/02/2025', 'DD/MM/YYYY'), -- fecha_i historia_membresia de V-ADU04
   (SELECT id_grupo FROM MJV_grupo WHERE id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Refugio Literario del Sur') AND tipo_grupo = 'adultos'),
-  TO_DATE('01/01/2026', 'DD/MM/YYYY'),
-  TO_DATE('30/01/2026', 'DD/MM/YYYY'),
+  TO_DATE('03/02/2025', 'DD/MM/YYYY'), -- fec_i g_lec de V-ADU04
+  TO_DATE('30/01/2026', 'DD/MM/YYYY'), -- reunión 2
   '9788466631174'
 );
-
+-- V-ADU01: sin inasistencias → 100 % de participación.
 -----------------------------------------------------------------
 -- VIEWS --
 -----------------------------------------------------------------
