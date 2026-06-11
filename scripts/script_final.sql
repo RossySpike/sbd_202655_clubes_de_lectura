@@ -2435,7 +2435,7 @@ BEGIN
   END IF;
 
   IF v_origen = v_destino THEN
-    RETURN p_monto;
+  RAISE_APPLICATION_ERROR(-20105, 'No se puede realizar la conversion porque las monedas son la misma.');
   END IF;
 
   IF p_tasa <= 0 THEN
