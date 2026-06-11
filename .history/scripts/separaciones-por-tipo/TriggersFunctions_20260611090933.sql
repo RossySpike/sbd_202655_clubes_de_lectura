@@ -146,8 +146,7 @@ BEGIN
 
   RETURN ROUND(p_monto * p_tasa, 2);
 END MJV_conversion_monetaria;  
-
-
+/
 CREATE OR REPLACE FUNCTION MJV_edad_miembro(p_id_lector NUMBER)
 RETURN NUMBER
 IS
@@ -450,37 +449,3 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20032, 'No se encontró información del grupo o club asociado a la reunión.');
 END;
-
-CREATE OR REPLACE FUNCTION MJV_fn_obtener_isbn_por_titulo (
-    p_titulo IN VARCHAR2
-) RETURN VARCHAR2 IS
-    v_isbn VARCHAR2(20);
-BEGIN
-    SELECT isbn 
-      INTO v_isbn 
-      FROM MJV_obra 
-     WHERE UPPER(TRIM(titulo)) = UPPER(TRIM(p_titulo))
-       AND ROWNUM = 1; -- Gana tolerancia ante ligeras variantes o duplicados
-       
-    RETURN v_isbn;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        RAISE_APPLICATION_ERROR(-20001, 'Error: La obra "' || p_titulo || '" no está registrada en el catálogo general.');
-END MJV_fn_obtener_isbn_por_titulo;
-
-CREATE OR REPLACE FUNCTION MJV_fn_obtener_id_club_por_nombre (
-    p_nombre_club IN VARCHAR2
-) RETURN NUMBER IS
-    v_id_club NUMBER;
-BEGIN
-    SELECT id_club 
-      INTO v_id_club 
-      FROM MJV_club 
-     WHERE UPPER(TRIM(nombre_club)) = UPPER(TRIM(p_nombre_club))
-       AND ROWNUM = 1; -- Tolerancia ante registros duplicados o similares
-       
-    RETURN v_id_club;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        RAISE_APPLICATION_ERROR(-20005, 'Error: El club de lectura "' || p_nombre_club || '" no está registrado en el sistema.');
-END MJV_fn_obtener_id_club_por_nombre;

@@ -467,20 +467,3 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20001, 'Error: La obra "' || p_titulo || '" no está registrada en el catálogo general.');
 END MJV_fn_obtener_isbn_por_titulo;
-
-CREATE OR REPLACE FUNCTION MJV_fn_obtener_id_club_por_nombre (
-    p_nombre_club IN VARCHAR2
-) RETURN NUMBER IS
-    v_id_club NUMBER;
-BEGIN
-    SELECT id_club 
-      INTO v_id_club 
-      FROM MJV_club 
-     WHERE UPPER(TRIM(nombre_club)) = UPPER(TRIM(p_nombre_club))
-       AND ROWNUM = 1; -- Tolerancia ante registros duplicados o similares
-       
-    RETURN v_id_club;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        RAISE_APPLICATION_ERROR(-20005, 'Error: El club de lectura "' || p_nombre_club || '" no está registrado en el sistema.');
-END MJV_fn_obtener_id_club_por_nombre;
