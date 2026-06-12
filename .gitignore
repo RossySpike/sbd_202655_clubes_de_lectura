@@ -1,0 +1,28 @@
+# Ignore only these specific exported documents
+/enunciado_text.txt
+/inserts-demostracion-inasistencias.txt
+/SQLconsultasyfunciones.pdf
+/SQLsubconsultas_text.txt
+/SQLsubconsultasyotrosobjetos.pdf
+/SQLtablasytransacciones.pdf
+
+# Keep common editor / OS ignores
+.DS_Store
+Thumbs.db
+~$*
+*.swp
+*.swo
+*~
+
+# IDE / Editor folders
+.vscode/
+.idea/
+
+# Logs and temp
+*.log
+*.tmp
+
+# Node and Python common (if present)
+node_modules/
+__pycache__/
+*.pyc

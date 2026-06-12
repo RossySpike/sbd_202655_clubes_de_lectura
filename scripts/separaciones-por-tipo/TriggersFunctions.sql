@@ -341,51 +341,51 @@ END;
 
 
 CREATE OR REPLACE TRIGGER MJV_tgr_grupo_lleno
-BEFORE INSERT  ON MJV_g_lec-- NOTE: fecha_i, fec_i Quiza un trigger que revise que la fecha de ingreso sea >= a la de creacion en grupo
+BEFORE INSERT ON MJV_g_lec
 FOR EACH ROW
-
 DECLARE
-  f_grupo MJV_grupo%ROWTYPE;
-  lector_estatus VARCHAR2(8);
-  num_miembros NUMBER;
-  max_miem NUMBER;
-  v_nuevo_grupo_id NUMBER;
-  v_se_hizo_ultima CHAR(1);
+    PRAGMA AUTONOMOUS_TRANSACTION; 
+    f_grupo MJV_grupo%ROWTYPE;
+    num_miembros NUMBER;
+    max_miem NUMBER;
+    v_nuevo_grupo_id NUMBER;
+    v_se_hizo_ultima CHAR(1);
 BEGIN
-
+    -- 1. Regla de Oro (Se mantiene igual)
     BEGIN
-SELECT ultima INTO v_se_hizo_ultima FROM MJV_calendario_reunion_mes  WHERE id_club = :NEW.id_club AND id_grupo = :NEW.id_grupo AND realizada = 'S' ORDER BY fecha DESC FETCH FIRST 1 ROWS ONLY;
+        SELECT ultima INTO v_se_hizo_ultima FROM MJV_calendario_reunion_mes  
+        WHERE id_club = :NEW.id_club AND id_grupo = :NEW.id_grupo AND realizada = 'S' 
+        ORDER BY fecha DESC FETCH FIRST 1 ROWS ONLY;
 
-IF v_se_hizo_ultima != 'S' THEN
-                  RAISE_APPLICATION_ERROR(-20006, 'No se puede agregar miembros mientras se discute un libro');
-
-END IF;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        NULL; -- No hay reuniones realizadas, se puede agregar
+        IF v_se_hizo_ultima != 'S' THEN
+            RAISE_APPLICATION_ERROR(-20006, 'No se puede agregar miembros mientras se discute un libro');
+        END IF;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            NULL; 
     END;
+    
+    -- 2. Datos del Grupo
     SELECT * INTO f_grupo 
     FROM MJV_grupo 
-    WHERE id_club = :NEW.id_club AND id_grupo = :NEW.id_grupo ;
-
-
-  BEGIN
-    SELECT estatus INTO lector_estatus FROM MJV_historia_membresia WHERE id_club = :NEW.id_club AND id_lector = :NEW.id_lector AND estatus = 'activo';
-  EXCEPTION
-  WHEN NO_DATA_FOUND THEN
-                  RAISE_APPLICATION_ERROR(-20007, 'El lector no tiene una membresia activa en el club asociado al grupo.');
-  END;
-  SELECT COUNT(*) INTO num_miembros FROM MJV_g_lec gl WHERE gl.id_club = :NEW.id_club AND gl.id_grupo = :NEW.id_grupo AND gl.fec_f IS NULL;
-    -- Validar de grupo
+    WHERE id_club = :NEW.id_club AND id_grupo = :NEW.id_grupo;
+  
+    -- 3. Contar Miembros
+    SELECT COUNT(*) INTO num_miembros FROM MJV_g_lec gl 
+    WHERE gl.id_club = :NEW.id_club AND gl.id_grupo = :NEW.id_grupo AND gl.fec_f IS NULL;
+    
+    -- 4. Límites (¡Recuerda que para tu prueba debe estar en 5, aquí lo dejé en 15 como el original!)
     IF f_grupo.tipo_grupo = 'adultos' THEN
       max_miem := 30;
     END IF;
     IF f_grupo.tipo_grupo = 'jovenes' THEN
-      max_miem := 15;
+      max_miem := 15; 
     END IF;
     IF f_grupo.tipo_grupo = 'niños' THEN
       max_miem := 15;
     END IF;
+    
+    -- 5. Lógica de División
     IF num_miembros >= max_miem THEN
          MJV_sp_split_grupo(
             p_id_club_original => f_grupo.id_club,
@@ -397,8 +397,25 @@ EXCEPTION
         );
         :NEW.id_grupo := v_nuevo_grupo_id;
     END IF;
+    
+    COMMIT;
 END;
-/
+
+CREATE OR REPLACE TRIGGER MJV_tgr_validar_membresia_glec
+BEFORE INSERT ON MJV_g_lec
+FOR EACH ROW
+DECLARE
+  lector_estatus VARCHAR2(8);
+BEGIN
+    SELECT estatus INTO lector_estatus 
+      FROM MJV_historia_membresia 
+     WHERE id_club = :NEW.id_club 
+       AND id_lector = :NEW.id_lector 
+       AND estatus = 'activo';
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(-20007, 'El lector no tiene una membresia activa en el club asociado al grupo.');
+END;
 
 
 CREATE OR REPLACE TRIGGER MJV_tgr_validar_moderador
@@ -484,3 +501,42 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20005, 'Error: El club de lectura "' || p_nombre_club || '" no está registrado en el sistema.');
 END MJV_fn_obtener_id_club_por_nombre;
+
+CREATE OR REPLACE FUNCTION MJV_fn_obtener_id_rep_por_doc (
+    p_doc_identidad IN VARCHAR2,
+    p_tipo_rep      IN VARCHAR2
+) RETURN NUMBER IS
+    v_id_rep NUMBER;
+    v_tipo   VARCHAR2(20) := UPPER(TRIM(p_tipo_rep));
+    v_doc    VARCHAR2(20) := UPPER(TRIM(p_doc_identidad));
+BEGIN
+    -- Validar si la búsqueda es en la tabla de Lectores o en la de Representantes Externos
+    IF v_tipo = 'LECTOR' THEN
+        SELECT id_lector 
+          INTO v_id_rep 
+          FROM MJV_lector 
+         WHERE UPPER(TRIM(doc_identidad)) = v_doc
+           AND ROWNUM = 1;
+           
+    ELSIF v_tipo = 'EXTERNO' THEN
+        SELECT id_representante 
+          INTO v_id_rep 
+          FROM MJV_representante 
+         WHERE UPPER(TRIM(doc_identidad)) = v_doc
+           AND ROWNUM = 1;
+           
+    ELSE
+        RAISE_APPLICATION_ERROR(-20012, 'Error: El tipo de representante especificado ("' || p_tipo_rep || '") no es válido. Debe ser LECTOR o EXTERNO.');
+    END IF;
+
+    RETURN v_id_rep;
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        IF v_tipo = 'LECTOR' THEN
+            RAISE_APPLICATION_ERROR(-20010, 'Error: No se encontró ningún miembro LECTOR registrado con el documento: ' || p_doc_identidad);
+        ELSE
+            RAISE_APPLICATION_ERROR(-20011, 'Error: No se encontró ningún representante EXTERNO registrado con el documento: ' || p_doc_identidad);
+        END IF;
+END MJV_fn_obtener_id_rep_por_doc;
+/

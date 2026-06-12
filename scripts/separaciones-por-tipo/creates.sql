@@ -123,6 +123,7 @@ CONSTRAINT MJV_LECTOR_CK_ARCO CHECK (
     OR
     (id_representante IS NULL AND id_representante_lector IS NULL)      -- Mayor de edad
 )
+CONSTRAINT MJV_lector_doc_uk UNIQUE (doc_identidad);
 );
 
 CREATE SEQUENCE MJV_seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;

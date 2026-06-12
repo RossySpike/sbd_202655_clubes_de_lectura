@@ -123,6 +123,7 @@ CONSTRAINT MJV_LECTOR_CK_ARCO CHECK (
     OR
     (id_representante IS NULL AND id_representante_lector IS NULL)      -- Mayor de edad
 )
+CONSTRAINT MJV_lector_doc_uk UNIQUE (doc_identidad);
 );
 
 CREATE SEQUENCE MJV_seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;
@@ -2650,46 +2651,43 @@ BEGIN
     
     COMMIT;
 END;
-/
 
 
 CREATE OR REPLACE TRIGGER MJV_tgr_grupo_lleno
-BEFORE INSERT  ON MJV_g_lec-- NOTE: fecha_i, fec_i Quiza un trigger que revise que la fecha de ingreso sea >= a la de creacion en grupo
+BEFORE INSERT ON MJV_g_lec
 FOR EACH ROW
-
 DECLARE
-  f_grupo MJV_grupo%ROWTYPE;
-  lector_estatus VARCHAR2(8);
-  num_miembros NUMBER;
-  max_miem NUMBER;
-  v_nuevo_grupo_id NUMBER;
-  v_se_hizo_ultima CHAR(1);
+    PRAGMA AUTONOMOUS_TRANSACTION; 
+    f_grupo MJV_grupo%ROWTYPE;
+    num_miembros NUMBER;
+    max_miem NUMBER;
+    v_nuevo_grupo_id NUMBER;
+    v_se_hizo_ultima CHAR(1);
 BEGIN
-
+    -- 1. Regla de Oro (Se mantiene igual)
     BEGIN
-SELECT ultima INTO v_se_hizo_ultima FROM MJV_calendario_reunion_mes  WHERE id_club = :NEW.id_club AND id_grupo = :NEW.id_grupo AND realizada = 'S' ORDER BY fecha DESC FETCH FIRST 1 ROWS ONLY;
+        SELECT ultima INTO v_se_hizo_ultima FROM MJV_calendario_reunion_mes  
+        WHERE id_club = :NEW.id_club AND id_grupo = :NEW.id_grupo AND realizada = 'S' 
+        ORDER BY fecha DESC FETCH FIRST 1 ROWS ONLY;
 
-IF v_se_hizo_ultima != 'S' THEN
-                  RAISE_APPLICATION_ERROR(-20006, 'No se puede agregar miembros mientras se discute un libro');
-
-END IF;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        NULL; -- No hay reuniones realizadas, se puede agregar
+        IF v_se_hizo_ultima != 'S' THEN
+            RAISE_APPLICATION_ERROR(-20006, 'No se puede agregar miembros mientras se discute un libro');
+        END IF;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            NULL; 
     END;
+    
+    -- 2. Datos del Grupo
     SELECT * INTO f_grupo 
     FROM MJV_grupo 
-    WHERE id_club = :NEW.id_club AND id_grupo = :NEW.id_grupo ;
-
-
-  BEGIN
-    SELECT estatus INTO lector_estatus FROM MJV_historia_membresia WHERE id_club = :NEW.id_club AND id_lector = :NEW.id_lector AND estatus = 'activo';
-  EXCEPTION
-  WHEN NO_DATA_FOUND THEN
-                  RAISE_APPLICATION_ERROR(-20007, 'El lector no tiene una membresia activa en el club asociado al grupo.');
-  END;
-  SELECT COUNT(*) INTO num_miembros FROM MJV_g_lec gl WHERE gl.id_club = :NEW.id_club AND gl.id_grupo = :NEW.id_grupo AND gl.fec_f IS NULL;
-    -- Validar de grupo
+    WHERE id_club = :NEW.id_club AND id_grupo = :NEW.id_grupo;
+  
+    -- 3. Contar Miembros
+    SELECT COUNT(*) INTO num_miembros FROM MJV_g_lec gl 
+    WHERE gl.id_club = :NEW.id_club AND gl.id_grupo = :NEW.id_grupo AND gl.fec_f IS NULL;
+    
+    -- 4. Límites (¡Recuerda que para tu prueba debe estar en 5, aquí lo dejé en 15 como el original!)
     IF f_grupo.tipo_grupo = 'adultos' THEN
       max_miem := 30;
     END IF;
@@ -2699,6 +2697,8 @@ EXCEPTION
     IF f_grupo.tipo_grupo = 'niños' THEN
       max_miem := 15;
     END IF;
+    
+    -- 5. Lógica de División
     IF num_miembros >= max_miem THEN
          MJV_sp_split_grupo(
             p_id_club_original => f_grupo.id_club,
@@ -2710,8 +2710,9 @@ EXCEPTION
         );
         :NEW.id_grupo := v_nuevo_grupo_id;
     END IF;
+    
+    COMMIT;
 END;
-/
 
 
 CREATE OR REPLACE TRIGGER MJV_tgr_validar_moderador
