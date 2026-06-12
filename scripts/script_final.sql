@@ -2459,7 +2459,7 @@ BEGIN
     RAISE_APPLICATION_ERROR(-20103, 'Moneda destino no registrada: ' || v_destino);
   END IF;
 
-  RETURN ROUND(p_monto * p_tasa, 2);
+  RETURN ROUND(p_monto / p_tasa, 2);
 END MJV_conversion_monetaria;  
 /
 CREATE OR REPLACE FUNCTION MJV_edad_miembro(p_id_lector NUMBER)

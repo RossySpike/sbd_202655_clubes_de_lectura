@@ -144,7 +144,7 @@ BEGIN
     RAISE_APPLICATION_ERROR(-20103, 'Moneda destino no registrada: ' || v_destino);
   END IF;
 
-  RETURN ROUND(p_monto * p_tasa, 2);
+  RETURN ROUND(p_monto / p_tasa, 2);
 END MJV_conversion_monetaria;  
 
 
@@ -539,4 +539,19 @@ EXCEPTION
             RAISE_APPLICATION_ERROR(-20011, 'Error: No se encontró ningún representante EXTERNO registrado con el documento: ' || p_doc_identidad);
         END IF;
 END MJV_fn_obtener_id_rep_por_doc;
-/
+
+create or replace TRIGGER MJV_tgr_validar_membresia_pago
+BEFORE INSERT ON MJV_pago_membresia
+FOR EACH ROW
+DECLARE
+  v_lector_estatus VARCHAR2(8);
+BEGIN
+    SELECT estatus INTO v_lector_estatus 
+      FROM MJV_historia_membresia 
+     WHERE id_club = :NEW.id_club 
+       AND id_lector = :NEW.id_lector 
+       AND estatus = 'activo';
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(-20007, 'Error: No se puede registrar el pago. El lector no tiene una membresía activa en este club.');
+END;

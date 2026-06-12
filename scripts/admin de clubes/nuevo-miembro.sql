@@ -106,7 +106,7 @@ EXCEPTION
 END MJV_sp_inscribir_miembro;
 
 
--- ejemplo de ejecución:
+/* -- ejemplo de ejecución:
 SET SERVEROUTPUT ON;
 
 DECLARE
@@ -145,4 +145,4 @@ BEGIN
         pi_doc_rep         => v_rep_doc,   
         pi_tipo_rep        => v_rep_tipo   
     );
-END;
+END; */
