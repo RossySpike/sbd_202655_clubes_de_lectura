@@ -2373,20 +2373,22 @@ BEFORE INSERT OR UPDATE ON MJV_historia_membresia
 FOR EACH ROW
 WHEN (NEW.estatus = 'activo')
 DECLARE
+  PRAGMA AUTONOMOUS_TRANSACTION;
   v_count NUMBER;
 BEGIN
   SELECT COUNT(*) INTO v_count
   FROM MJV_historia_membresia
   WHERE id_lector = :NEW.id_lector
     AND estatus   = 'activo'
-    AND NOT (id_club = :NEW.id_club AND fecha_i = :NEW.fecha_i);
+    AND id_club != :NEW.id_club;
+
 
   IF v_count > 0 THEN
     RAISE_APPLICATION_ERROR(-20002,
       'El lector ya tiene membresía activa en otro club.');
   END IF;
+  COMMIT;
 END;
-/
 
 -- HC-08: Grupos de ninos deben iniciar a las 17:00 como maximo para terminar antes de las 19:00
 -- (duracion maxima de reunion = 2 horas segun enunciado)

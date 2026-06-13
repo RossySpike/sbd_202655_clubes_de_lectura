@@ -344,3 +344,108 @@ BEGIN
     );
 END;
 */
+
+create or replace FUNCTION MJV_fn_validar_solvencia_retiro (
+    p_id_lector IN NUMBER,
+    p_id_club   IN NUMBER
+) RETURN VARCHAR2 IS
+    v_fecha_i        DATE;
+    v_meses_trans    NUMBER;
+    v_meses_ano_act  NUMBER;
+    v_anos_iniciados NUMBER;
+    v_pagos_req      NUMBER;
+    v_total_pagado   NUMBER;
+BEGIN
+    -- 1. Obtener fecha de ingreso
+    SELECT fecha_i INTO v_fecha_i
+      FROM MJV_historia_membresia
+     WHERE id_lector = p_id_lector AND id_club = p_id_club AND estatus = 'activo';
+
+    -- 2. Calcular matemática de años y pagos
+    v_meses_trans := MONTHS_BETWEEN(SYSDATE, v_fecha_i);
+    v_anos_iniciados := CEIL(v_meses_trans / 12);
+    v_meses_ano_act  := MOD(v_meses_trans, 12);
+
+    -- Regla: Si avisó a menos de 1 mes (mes 11), debe pagar el año que viene
+    v_pagos_req := v_anos_iniciados;
+    IF v_meses_ano_act >= 11 OR (v_meses_ano_act = 0 AND v_meses_trans > 0) THEN
+        v_pagos_req := v_anos_iniciados + 1;
+    END IF;
+
+    -- 3. Sumar total pagado
+    SELECT COALESCE(SUM(monto), 0) INTO v_total_pagado
+      FROM MJV_pago_membresia
+     WHERE id_lector = p_id_lector AND id_club = p_id_club;
+
+    -- 4. Validar
+    IF v_total_pagado < (v_pagos_req * 100) THEN
+        IF v_meses_ano_act >= 11 OR (v_meses_ano_act = 0 AND v_meses_trans > 0) THEN
+            RETURN 'AVISO TARDÍO: Retiro fuera de plazo. Debe pagar 100 USD de penalidad.';
+        ELSE
+            RETURN 'INSOLVENCIA: Faltan ' || ((v_pagos_req * 100) - v_total_pagado) || ' USD por pagar.';
+        END IF;
+    END IF;
+
+    RETURN NULL; -- Todo en orden
+END;
+
+CREATE OR REPLACE PROCEDURE MJV_sp_retirar_miembro (
+    pi_doc_identidad IN VARCHAR2,
+    pi_nombre_club   IN VARCHAR2,
+    pi_motivo_retiro IN VARCHAR2
+) IS
+    v_id_lector NUMBER;
+    v_id_club   NUMBER;
+    v_msj_error VARCHAR2(200);
+BEGIN
+    -- 1. Identificación
+    SELECT id_lector INTO v_id_lector 
+      FROM MJV_lector 
+     WHERE UPPER(TRIM(doc_identidad)) = UPPER(TRIM(pi_doc_identidad));
+
+    v_id_club := MJV_fn_obtener_id_club_por_nombre(pi_nombre_club);
+
+    -- 2. LLAMADA A LA NUEVA FUNCIÓN DE VALIDACIÓN
+    v_msj_error := MJV_fn_validar_solvencia_retiro(v_id_lector, v_id_club);
+    
+    IF v_msj_error IS NOT NULL THEN
+        RAISE_APPLICATION_ERROR(-20040, 'RETIRO DENEGADO: ' || v_msj_error);
+    END IF;
+
+    -- 3. Ejecutar Retiro (Solo si pasó la validación)
+    UPDATE MJV_g_lec
+       SET fec_f = SYSDATE
+     WHERE id_lector = v_id_lector AND id_club = v_id_club AND fec_f IS NULL; 
+
+    UPDATE MJV_historia_membresia
+       SET estatus = 'retirado', fecha_f = SYSDATE, motivo_retiro = LOWER(TRIM(pi_motivo_retiro))
+     WHERE id_lector = v_id_lector AND id_club = v_id_club AND estatus = 'activo';
+
+    IF SQL%ROWCOUNT = 0 THEN
+        RAISE_APPLICATION_ERROR(-20030, 'Error: El miembro ya no estaba activo.');
+    END IF;
+
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Retiro procesado correctamente.');
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(-20010, 'No encontrado.');
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE;
+END MJV_sp_retirar_miembro;
+/*
+SET SERVEROUTPUT ON;
+
+DECLARE
+    v_doc    VARCHAR2(20)  := '&documento_identidad_lector';
+    v_club   VARCHAR2(150) := '&nombre_exacto_del_club';
+    v_motivo VARCHAR2(200) := '&motivo_retiro_voluntario_inasistencia_deuda_otro';
+BEGIN
+    MJV_sp_retirar_miembro(
+        pi_doc_identidad => v_doc,
+        pi_nombre_club   => v_club,
+        pi_motivo_retiro => LOWER(TRIM(v_motivo))
+    );
+END;
+/*

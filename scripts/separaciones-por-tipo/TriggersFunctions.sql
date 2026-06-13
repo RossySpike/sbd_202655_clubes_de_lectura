@@ -58,18 +58,21 @@ BEFORE INSERT OR UPDATE ON MJV_historia_membresia
 FOR EACH ROW
 WHEN (NEW.estatus = 'activo')
 DECLARE
+  PRAGMA AUTONOMOUS_TRANSACTION;
   v_count NUMBER;
 BEGIN
   SELECT COUNT(*) INTO v_count
   FROM MJV_historia_membresia
   WHERE id_lector = :NEW.id_lector
     AND estatus   = 'activo'
-    AND NOT (id_club = :NEW.id_club AND fecha_i = :NEW.fecha_i);
+    AND id_club != :NEW.id_club;
+
 
   IF v_count > 0 THEN
     RAISE_APPLICATION_ERROR(-20002,
       'El lector ya tiene membresía activa en otro club.');
   END IF;
+  COMMIT;
 END;
 /
 
@@ -554,4 +557,48 @@ BEGIN
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20007, 'Error: No se puede registrar el pago. El lector no tiene una membresía activa en este club.');
+END;
+
+create or replace FUNCTION MJV_fn_validar_solvencia_retiro (
+    p_id_lector IN NUMBER,
+    p_id_club   IN NUMBER
+) RETURN VARCHAR2 IS
+    v_fecha_i        DATE;
+    v_meses_trans    NUMBER;
+    v_meses_ano_act  NUMBER;
+    v_anos_iniciados NUMBER;
+    v_pagos_req      NUMBER;
+    v_total_pagado   NUMBER;
+BEGIN
+    -- 1. Obtener fecha de ingreso
+    SELECT fecha_i INTO v_fecha_i
+      FROM MJV_historia_membresia
+     WHERE id_lector = p_id_lector AND id_club = p_id_club AND estatus = 'activo';
+
+    -- 2. Calcular matemática de años y pagos
+    v_meses_trans := MONTHS_BETWEEN(SYSDATE, v_fecha_i);
+    v_anos_iniciados := CEIL(v_meses_trans / 12);
+    v_meses_ano_act  := MOD(v_meses_trans, 12);
+
+    -- Regla: Si avisó a menos de 1 mes (mes 11), debe pagar el año que viene
+    v_pagos_req := v_anos_iniciados;
+    IF v_meses_ano_act >= 11 OR (v_meses_ano_act = 0 AND v_meses_trans > 0) THEN
+        v_pagos_req := v_anos_iniciados + 1;
+    END IF;
+
+    -- 3. Sumar total pagado
+    SELECT COALESCE(SUM(monto), 0) INTO v_total_pagado
+      FROM MJV_pago_membresia
+     WHERE id_lector = p_id_lector AND id_club = p_id_club;
+
+    -- 4. Validar
+    IF v_total_pagado < (v_pagos_req * 100) THEN
+        IF v_meses_ano_act >= 11 OR (v_meses_ano_act = 0 AND v_meses_trans > 0) THEN
+            RETURN 'AVISO TARDÍO: Retiro fuera de plazo. Debe pagar 100 USD de penalidad.';
+        ELSE
+            RETURN 'INSOLVENCIA: Faltan ' || ((v_pagos_req * 100) - v_total_pagado) || ' USD por pagar.';
+        END IF;
+    END IF;
+
+    RETURN NULL; -- Todo en orden
 END;
