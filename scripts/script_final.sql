@@ -2128,8 +2128,7 @@ GROUP BY
   c.id_club, c.nombre_club, ci.nombre_ciudad, pa.nombre_pais,
   c.cod_postal, c.cuota_anual,
   gc.grupos_adultos, gc.grupos_jovenes, gc.grupos_ninos,
-  li.isbn, li.titulo, li.tipo_narrativa
-ORDER BY c.id_club, ROUND(AVG(crm.valoracion), 2) DESC;
+  li.isbn, li.titulo, li.tipo_narrativa;
 
 -- TIPO: COMPLEJA (JOINs múltiples + Subconsulta correlacionada para agregación + DECODE)
 -- Ficha técnica detallada del libro: atributos editoriales, país de origen, valoración 
@@ -2661,7 +2660,7 @@ CREATE OR REPLACE TRIGGER MJV_tgr_grupo_lleno
 BEFORE INSERT ON MJV_g_lec
 FOR EACH ROW
 DECLARE
-    PRAGMA AUTONOMOUS_TRANSACTION; 
+    PRAGMA AUTONOMOUS_TRANSACTION;
     f_grupo MJV_grupo%ROWTYPE;
     num_miembros NUMBER;
     max_miem NUMBER;
@@ -2714,7 +2713,6 @@ BEGIN
         );
         :NEW.id_grupo := v_nuevo_grupo_id;
     END IF;
-    
     COMMIT;
 END;
 /
