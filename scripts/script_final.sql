@@ -2604,6 +2604,44 @@ BEGIN
 END MJV_participacion_bimestre_miembro;  
 /
 
+-- Creacion especial antes del script complementario para que split compile correctamente
+CREATE OR REPLACE FUNCTION MJV_fn_grupo_discutiendo_libro (
+    p_id_club  IN NUMBER,
+    p_id_grupo IN NUMBER
+) RETURN NUMBER   -- 1 = discusión activa, 0 = sin discusión activa
+IS
+    v_count NUMBER;
+BEGIN
+    SELECT COUNT(*)
+      INTO v_count
+      FROM MJV_calendario_reunion_mes crm
+     WHERE crm.id_club  = p_id_club
+       AND crm.id_grupo = p_id_grupo
+       AND crm.realizada = 'S'
+       AND crm.ultima    = 'N';   -- Reuniones realizadas pero el libro aún no cierra
+
+    RETURN CASE WHEN v_count > 0 THEN 1 ELSE 0 END;
+END MJV_fn_grupo_discutiendo_libro;
+/
+
+CREATE OR REPLACE TRIGGER MJV_tgr_bloquear_inscripcion_libro_activo
+BEFORE INSERT ON MJV_g_lec
+FOR EACH ROW
+DECLARE
+    v_discutiendo NUMBER;
+BEGIN
+    v_discutiendo := MJV_fn_grupo_discutiendo_libro(:NEW.id_club, :NEW.id_grupo);
+
+    IF v_discutiendo = 1 THEN
+        RAISE_APPLICATION_ERROR(
+            -20050,
+            'REGLA DE ORO: No se puede inscribir un nuevo miembro al grupo '
+            || :NEW.id_grupo
+            || ' mientras se esté discutiendo un libro activamente.'
+        );
+    END IF;
+END MJV_tgr_bloquear_inscripcion_libro_activo;
+/
 
 -- SPLITS:      Max       Min
 -- ADULTOS      30        10
