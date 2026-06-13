@@ -2389,6 +2389,7 @@ BEGIN
   COMMIT;
 END;
 /
+/
 
 -- HC-08: Grupos de ninos deben iniciar a las 17:00 como maximo para terminar antes de las 19:00
 -- (duracion maxima de reunion = 2 horas segun enunciado)
@@ -2653,6 +2654,7 @@ BEGIN
     
     COMMIT;
 END;
+/
 / 
 
 
@@ -2716,6 +2718,7 @@ BEGIN
     COMMIT;
 END;
 /
+/
 
 
 CREATE OR REPLACE TRIGGER MJV_tgr_validar_moderador
@@ -2767,4 +2770,5 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20032, 'No se encontró información del grupo o club asociado a la reunión.');
 END;
+/
 /
