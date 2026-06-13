@@ -20,8 +20,8 @@ CREATE TABLE MJV_ciudad(
   id_pais NUMBER(3) NOT NULL,
   id_ciudad NUMBER(3) DEFAULT MJV_seq_ciudad.NEXTVAL,
   nombre_ciudad VARCHAR2(100) NOT NULL,
- CONSTRAINT MJV_ciudad_pk PRIMARY KEY (id_pais, id_ciudad),
- CONSTRAINT MJV_ciudad_fk_pais FOREIGN KEY (id_pais) REFERENCES MJV_pais(id_pais)
+  CONSTRAINT MJV_ciudad_pk PRIMARY KEY (id_pais, id_ciudad),
+  CONSTRAINT MJV_ciudad_fk_pais FOREIGN KEY (id_pais) REFERENCES MJV_pais(id_pais)
 );
 
 
@@ -122,8 +122,8 @@ CONSTRAINT MJV_LECTOR_CK_ARCO CHECK (
     (id_representante IS NULL AND id_representante_lector IS NOT NULL)  -- Representante lector
     OR
     (id_representante IS NULL AND id_representante_lector IS NULL)      -- Mayor de edad
-)
-CONSTRAINT MJV_lector_doc_uk UNIQUE (doc_identidad);
+),
+CONSTRAINT MJV_lector_doc_uk UNIQUE (doc_identidad)
 );
 
 CREATE SEQUENCE MJV_seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;
@@ -2389,6 +2389,7 @@ BEGIN
   END IF;
   COMMIT;
 END;
+/
 
 -- HC-08: Grupos de ninos deben iniciar a las 17:00 como maximo para terminar antes de las 19:00
 -- (duracion maxima de reunion = 2 horas segun enunciado)
@@ -2653,6 +2654,7 @@ BEGIN
     
     COMMIT;
 END;
+/ 
 
 
 CREATE OR REPLACE TRIGGER MJV_tgr_grupo_lleno
@@ -2715,6 +2717,7 @@ BEGIN
     
     COMMIT;
 END;
+/
 
 
 CREATE OR REPLACE TRIGGER MJV_tgr_validar_moderador
@@ -2766,3 +2769,4 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20032, 'No se encontró información del grupo o club asociado a la reunión.');
 END;
+/
