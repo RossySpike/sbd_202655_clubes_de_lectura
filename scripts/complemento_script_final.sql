@@ -5,7 +5,7 @@ CREATE OR REPLACE FUNCTION MJV_fn_obtener_isbn_por_titulo (
 BEGIN
     SELECT isbn 
       INTO v_isbn 
-      FROM MJV_obra 
+      FROM MJV_Libro 
      WHERE UPPER(TRIM(titulo)) = UPPER(TRIM(p_titulo))
        AND ROWNUM = 1; -- Gana tolerancia ante ligeras variantes o duplicados
        
@@ -14,6 +14,7 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20001, 'Error: La obra "' || p_titulo || '" no está registrada en el catálogo general.');
 END MJV_fn_obtener_isbn_por_titulo;
+/
 
 CREATE OR REPLACE FUNCTION MJV_fn_obtener_id_club_por_nombre (
     p_nombre_club IN VARCHAR2
@@ -31,6 +32,7 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20005, 'Error: El club de lectura "' || p_nombre_club || '" no está registrado en el sistema.');
 END MJV_fn_obtener_id_club_por_nombre;
+/
 
 CREATE OR REPLACE FUNCTION MJV_fn_obtener_id_rep_por_doc (
     p_doc_identidad IN VARCHAR2,
@@ -69,6 +71,7 @@ EXCEPTION
             RAISE_APPLICATION_ERROR(-20011, 'Error: No se encontró ningún representante EXTERNO registrado con el documento: ' || p_doc_identidad);
         END IF;
 END MJV_fn_obtener_id_rep_por_doc;
+/
 
 CREATE OR REPLACE TRIGGER MJV_tgr_validar_membresia_glec
 BEFORE INSERT ON MJV_g_lec
@@ -85,6 +88,7 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20007, 'El lector no tiene una membresia activa en el club asociado al grupo.');
 END;
+/
 
 -----------------------------------------------------------------------
 
@@ -206,6 +210,7 @@ EXCEPTION
         ROLLBACK;
         RAISE;
 END MJV_sp_inscribir_miembro;
+/
 
 /* -- ejemplo de ejecución:
 SET SERVEROUTPUT ON;
@@ -263,6 +268,7 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20007, 'Error: No se puede registrar el pago. El lector no tiene una membresía activa en este club.');
 END;
+/
 
 CREATE OR REPLACE PROCEDURE MJV_sp_registrar_pago_membresia (
     pi_doc_identidad IN VARCHAR2,
@@ -323,6 +329,7 @@ EXCEPTION
         ROLLBACK;
         RAISE;
 END MJV_sp_registrar_pago_membresia;
+/
 
 -- ejemplo de ejecución:
 /*
@@ -388,6 +395,7 @@ BEGIN
 
     RETURN NULL; -- Todo en orden
 END;
+/
 
 CREATE OR REPLACE PROCEDURE MJV_sp_retirar_miembro (
     pi_doc_identidad IN VARCHAR2,
@@ -434,6 +442,7 @@ EXCEPTION
         ROLLBACK;
         RAISE;
 END MJV_sp_retirar_miembro;
+/
 /*
 SET SERVEROUTPUT ON;
 

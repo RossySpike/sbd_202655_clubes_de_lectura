@@ -122,8 +122,8 @@ CONSTRAINT MJV_LECTOR_CK_ARCO CHECK (
     (id_representante IS NULL AND id_representante_lector IS NOT NULL)  -- Representante lector
     OR
     (id_representante IS NULL AND id_representante_lector IS NULL)      -- Mayor de edad
-)
-CONSTRAINT MJV_lector_doc_uk UNIQUE (doc_identidad);
+),
+CONSTRAINT MJV_lector_doc_uk UNIQUE (doc_identidad)
 );
 
 CREATE SEQUENCE MJV_seq_idioma_miembro START WITH 1 INCREMENT BY 1 NOCYCLE;
@@ -2128,8 +2128,7 @@ GROUP BY
   c.id_club, c.nombre_club, ci.nombre_ciudad, pa.nombre_pais,
   c.cod_postal, c.cuota_anual,
   gc.grupos_adultos, gc.grupos_jovenes, gc.grupos_ninos,
-  li.isbn, li.titulo, li.tipo_narrativa
-ORDER BY c.id_club, ROUND(AVG(crm.valoracion), 2) DESC;
+  li.isbn, li.titulo, li.tipo_narrativa;
 
 -- TIPO: COMPLEJA (JOINs múltiples + Subconsulta correlacionada para agregación + DECODE)
 -- Ficha técnica detallada del libro: atributos editoriales, país de origen, valoración 
@@ -2389,6 +2388,7 @@ BEGIN
   END IF;
   COMMIT;
 END;
+/
 
 -- HC-08: Grupos de ninos deben iniciar a las 17:00 como maximo para terminar antes de las 19:00
 -- (duracion maxima de reunion = 2 horas segun enunciado)
@@ -2653,13 +2653,13 @@ BEGIN
     
     COMMIT;
 END;
-
+/
 
 CREATE OR REPLACE TRIGGER MJV_tgr_grupo_lleno
 BEFORE INSERT ON MJV_g_lec
 FOR EACH ROW
 DECLARE
-    PRAGMA AUTONOMOUS_TRANSACTION; 
+    PRAGMA AUTONOMOUS_TRANSACTION;
     f_grupo MJV_grupo%ROWTYPE;
     num_miembros NUMBER;
     max_miem NUMBER;
@@ -2712,10 +2712,9 @@ BEGIN
         );
         :NEW.id_grupo := v_nuevo_grupo_id;
     END IF;
-    
     COMMIT;
 END;
-
+/
 
 CREATE OR REPLACE TRIGGER MJV_tgr_validar_moderador
 BEFORE INSERT OR UPDATE ON MJV_calendario_reunion_mes
@@ -2766,3 +2765,4 @@ EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20032, 'No se encontró información del grupo o club asociado a la reunión.');
 END;
+/
