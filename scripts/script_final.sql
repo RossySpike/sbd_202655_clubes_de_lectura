@@ -2613,16 +2613,28 @@ END MJV_participacion_bimestre_miembro;
 -- "Cuando se realiza esa división o split se dejan en el grupo original los miembros más antiguos y, luego por cada nueva inscripción se van asignando los nuevos miembros de manera equitativa" PAG 3
 -- NOTE: creo que no es necesario revisar por el moderador aca puesto que condicion necesaria de split es que no se este analizando un libro, osea,
 -- no hay reuniones que implica que tampoco hay un moderador elegido ya que el moderador tampoco es un puesto unico
-CREATE OR REPLACE PROCEDURE MJV_sp_split_grupo(
-    p_id_club_original IN NUMBER,
-    p_id_grupo_original IN NUMBER,
-    p_tipo_grupo IN VARCHAR2,
-    p_dia_reunion IN NUMBER,
-    p_hora_reunion IN DATE,
-    p_nuevo_grupo_id OUT NUMBER
+CREATE OR REPLACE PROCEDURE MJV_sp_split_grupo (
+    p_id_club_original  IN  NUMBER,
+    p_id_grupo_original IN  NUMBER,
+    p_tipo_grupo        IN  VARCHAR2,
+    p_dia_reunion       IN  NUMBER,
+    p_hora_reunion      IN  DATE,
+    p_nuevo_grupo_id    OUT NUMBER
 ) AS
-    v_min_miem NUMBER;
+    v_min_miem    NUMBER;
+    v_discutiendo NUMBER;
 BEGIN
+    -- Guardia de Regla de Oro (versión corregida)
+    v_discutiendo := MJV_fn_grupo_discutiendo_libro(p_id_club_original, p_id_grupo_original);
+    IF v_discutiendo = 1 THEN
+        RAISE_APPLICATION_ERROR(
+            -20051,
+            'REGLA DE ORO: No se puede realizar el split del grupo '
+            || p_id_grupo_original
+            || ' mientras se esté discutiendo un libro activamente.'
+        );
+    END IF;
+
     IF p_tipo_grupo = 'adultos' THEN
         v_min_miem := 10;
     ELSIF p_tipo_grupo = 'jovenes' THEN
@@ -2630,31 +2642,34 @@ BEGIN
     ELSE  -- niños
         v_min_miem := 10;
     END IF;
-    
+
     -- Crear nuevo grupo
     INSERT INTO MJV_grupo (id_club, tipo_grupo, fecha_creacion, dia_reunion, hora_reunion)
     VALUES (p_id_club_original, p_tipo_grupo, SYSDATE, p_dia_reunion, p_hora_reunion)
     RETURNING id_grupo INTO p_nuevo_grupo_id;
-    
-    -- (traspaso)
-    UPDATE MJV_g_lec 
-    SET id_grupo = p_nuevo_grupo_id
-    WHERE id_club = p_id_club_original AND id_grupo = p_id_grupo_original 
-      AND fec_f IS NULL
-      AND id_lector IN (
-          SELECT id_lector FROM (
-              SELECT id_lector, fec_i
-              FROM MJV_g_lec
-              WHERE id_club = p_id_club_original AND id_grupo = p_id_grupo_original 
-                AND fec_f IS NULL
-              ORDER BY fec_i DESC
-              FETCH FIRST v_min_miem ROWS ONLY
-          )
-      );
-    
+
+    -- Mover los miembros más recientes (los últimos en unirse) al nuevo grupo
+    -- Los más ANTIGUOS se quedan en el grupo original (enunciado pág. 3)
+    UPDATE MJV_g_lec
+       SET id_grupo = p_nuevo_grupo_id
+     WHERE id_club  = p_id_club_original
+       AND id_grupo = p_id_grupo_original
+       AND fec_f    IS NULL
+       AND id_lector IN (
+           SELECT id_lector
+             FROM (
+               SELECT id_lector, fec_i
+                 FROM MJV_g_lec
+                WHERE id_club  = p_id_club_original
+                  AND id_grupo = p_id_grupo_original
+                  AND fec_f    IS NULL
+                ORDER BY fec_i DESC
+               FETCH FIRST v_min_miem ROWS ONLY
+             )
+       );
+
     COMMIT;
-END;
-/
+END MJV_sp_split_grupo;
 / 
 
 
@@ -2725,50 +2740,79 @@ CREATE OR REPLACE TRIGGER MJV_tgr_validar_moderador
 BEFORE INSERT OR UPDATE ON MJV_calendario_reunion_mes
 FOR EACH ROW
 DECLARE
-    v_es_miembro_club NUMBER;
-    v_tipo_grupo      VARCHAR2(10);
-    v_es_adulto       NUMBER;
+    v_es_miembro_club  NUMBER;
+    v_tipo_grupo       VARCHAR2(10);
+    v_es_adulto        NUMBER;
+    v_mod_ocupado      NUMBER;
 BEGIN
-    -- Validar que el moderador sea miembro activo del mismo club
+    -- [R8-a] El moderador debe ser miembro activo del mismo club
     SELECT COUNT(*)
-    INTO v_es_miembro_club
-    FROM MJV_g_lec
-    WHERE id_lector = :NEW.mod_id_lector
-      AND id_club   = :NEW.id_club
-      AND fec_f IS NULL;  -- Miembro activo en el club
+      INTO v_es_miembro_club
+      FROM MJV_g_lec
+     WHERE id_lector = :NEW.mod_id_lector
+       AND id_club   = :NEW.id_club
+       AND fec_f     IS NULL;
 
     IF v_es_miembro_club = 0 THEN
-        RAISE_APPLICATION_ERROR(-20030, 
-            'El moderador debe ser un miembro activo del mismo club (no de un club asociado).');
+        RAISE_APPLICATION_ERROR(
+            -20030,
+            'El moderador debe ser un miembro activo del mismo club.'
+        );
     END IF;
 
-    -- tipo de grupo de la reunion
+    -- [R8-b] Para grupos de niños el moderador debe ser de un grupo adultos
     SELECT tipo_grupo
-    INTO v_tipo_grupo
-    FROM MJV_grupo
-    WHERE id_grupo = :NEW.id_grupo
-      AND id_club  = :NEW.id_club;
+      INTO v_tipo_grupo
+      FROM MJV_grupo
+     WHERE id_grupo = :NEW.id_grupo
+       AND id_club  = :NEW.id_club;
 
     IF v_tipo_grupo = 'niños' THEN
         SELECT COUNT(*)
-        INTO v_es_adulto
-        FROM MJV_g_lec gl
-        JOIN MJV_grupo g ON gl.id_grupo = g.id_grupo AND gl.id_club = g.id_club
-        WHERE gl.id_lector = :NEW.mod_id_lector
-          AND gl.id_club   = :NEW.id_club
-          AND gl.fec_f IS NULL
-          AND g.tipo_grupo = 'adultos';
+          INTO v_es_adulto
+          FROM MJV_g_lec gl
+          JOIN MJV_grupo g ON gl.id_grupo = g.id_grupo AND gl.id_club = g.id_club
+         WHERE gl.id_lector  = :NEW.mod_id_lector
+           AND gl.id_club    = :NEW.id_club
+           AND gl.fec_f      IS NULL
+           AND g.tipo_grupo  = 'adultos';
 
         IF v_es_adulto = 0 THEN
-            RAISE_APPLICATION_ERROR(-20031, 
-                'Para reuniones de grupo de niños, el moderador debe ser miembro de un grupo de adultos del mismo club.');
+            RAISE_APPLICATION_ERROR(
+                -20031,
+                'Para reuniones de niños el moderador debe pertenecer a un grupo de adultos del mismo club.'
+            );
         END IF;
     END IF;
 
+    -- [BRECHA 4] Un moderador no puede estar moderando simultáneamente
+    -- otro grupo con un libro en discusión activa (ultima='N').
+    -- Se excluye el propio grupo/isbn de la fila que se está insertando
+    -- para permitir registrar la siguiente reunión del mismo libro.
+    SELECT COUNT(*)
+      INTO v_mod_ocupado
+      FROM MJV_calendario_reunion_mes crm
+     WHERE crm.mod_id_lector = :NEW.mod_id_lector
+       AND crm.id_club        = :NEW.id_club
+       AND crm.realizada      = 'S'
+       AND crm.ultima         = 'N'
+       -- Excluir el mismo grupo+libro que se está registrando
+       AND NOT (crm.id_grupo = :NEW.id_grupo AND crm.isbn = :NEW.isbn);
+
+    IF v_mod_ocupado > 0 THEN
+        RAISE_APPLICATION_ERROR(
+            -20052,
+            'El moderador (ID: ' || :NEW.mod_id_lector
+            || ') ya está moderando activamente la discusión de otro libro en otro grupo. '
+            || 'Solo puede tomar una nueva moderación cuando termine la discusión actual.'
+        );
+    END IF;
 
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
-        RAISE_APPLICATION_ERROR(-20032, 'No se encontró información del grupo o club asociado a la reunión.');
-END;
-/
+        RAISE_APPLICATION_ERROR(
+            -20032,
+            'No se encontró información del grupo o club asociado a la reunión.'
+        );
+END MJV_tgr_validar_moderador;
 /

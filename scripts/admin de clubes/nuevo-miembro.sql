@@ -1,6 +1,7 @@
 CREATE OR REPLACE PROCEDURE MJV_sp_inscribir_miembro (
     pi_p_nombre        IN VARCHAR2,
     pi_p_apellido      IN VARCHAR2,
+    pi_s_nombre        IN VARCHAR2 DEFAULT NULL,
     pi_s_apellido      IN VARCHAR2,
     pi_doc_identidad   IN VARCHAR2,
     pi_telefono        IN VARCHAR2,
@@ -8,64 +9,105 @@ CREATE OR REPLACE PROCEDURE MJV_sp_inscribir_miembro (
     pi_genero          IN VARCHAR2,
     pi_fecha_nac       IN DATE,
     pi_nombre_pais_nac IN VARCHAR2,
-    pi_nombre_club     IN VARCHAR2, 
+    pi_nombre_club     IN VARCHAR2,
     pi_titulo_pref1    IN VARCHAR2,
     pi_titulo_pref2    IN VARCHAR2,
     pi_titulo_pref3    IN VARCHAR2,
-    pi_s_nombre        IN VARCHAR2 DEFAULT NULL,
-    pi_id_rep          IN NUMBER DEFAULT NULL,
-    pi_id_rep_lector   IN NUMBER DEFAULT NULL
+    pi_doc_rep         IN VARCHAR2 DEFAULT NULL,
+    pi_tipo_rep        IN VARCHAR2 DEFAULT NULL
 ) IS
-    v_id_lector    NUMBER;
-    v_age          NUMBER;
-    v_tipo_grupo   VARCHAR2(10);
-    v_id_grupo     NUMBER;
-    v_id_club      NUMBER; 
-    v_id_pais_nac  NUMBER;
-    v_isbn1        VARCHAR2(20);
-    v_isbn2        VARCHAR2(20);
-    v_isbn3        VARCHAR2(20);
+    v_id_lector     NUMBER;
+    v_age           NUMBER;
+    v_tipo_grupo    VARCHAR2(10);
+    v_id_grupo      NUMBER;
+    v_id_club       NUMBER;
+    v_id_pais_nac   NUMBER;
+    v_isbn1         VARCHAR2(20);
+    v_isbn2         VARCHAR2(20);
+    v_isbn3         VARCHAR2(20);
+    v_id_rep        NUMBER := NULL;
+    v_id_rep_lector NUMBER := NULL;
+    v_tiene_deuda   NUMBER;
+    v_vetado        NUMBER;
+    v_lector_existente NUMBER;
 BEGIN
-    -- 1. Resolver el nombre del club y el país a sus respectivos IDs
+    -- 1. Resolver club y país
     v_id_club := MJV_fn_obtener_id_club_por_nombre(pi_nombre_club);
-    
-    SELECT id_pais INTO v_id_pais_nac 
-      FROM MJV_pais 
+
+    SELECT id_pais INTO v_id_pais_nac
+      FROM MJV_pais
      WHERE UPPER(TRIM(nombre_pais)) = UPPER(TRIM(pi_nombre_pais_nac))
        AND ROWNUM = 1;
 
-    -- 2. Resolver los títulos de libros preferidos a sus respectivos ISBN
+    -- 2. Resolver ISBN de preferencias
     v_isbn1 := MJV_fn_obtener_isbn_por_titulo(pi_titulo_pref1);
     v_isbn2 := MJV_fn_obtener_isbn_por_titulo(pi_titulo_pref2);
     v_isbn3 := MJV_fn_obtener_isbn_por_titulo(pi_titulo_pref3);
 
-    -- 3. Insertar datos en la tabla padre (el ID se autogenera)
-    -- NOTA: Al ejecutar esto, tu trigger MJV_tgr_validar_edad validará si necesita o no representante
+    -- 3. Lógica de representante
+    IF pi_doc_rep IS NOT NULL AND pi_tipo_rep IS NOT NULL THEN
+        IF UPPER(TRIM(pi_tipo_rep)) = 'LECTOR' THEN
+            v_id_rep_lector := MJV_fn_obtener_id_rep_por_doc(pi_doc_rep, pi_tipo_rep);
+        ELSIF UPPER(TRIM(pi_tipo_rep)) = 'EXTERNO' THEN
+            v_id_rep := MJV_fn_obtener_id_rep_por_doc(pi_doc_rep, pi_tipo_rep);
+        ELSE
+            RAISE_APPLICATION_ERROR(
+                -20012,
+                'Error: El tipo de representante debe ser LECTOR o EXTERNO.'
+            );
+        END IF;
+    END IF;
+
+    -- 4. Insertar lector (dispara MJV_tgr_validar_edad)
     INSERT INTO MJV_lector (
-        p_nombre, p_apellido, s_apellido, doc_identidad, telefono, 
-        email, genero, fecha_nac, id_pais_nac, s_nombre, 
+        p_nombre, p_apellido, s_apellido, doc_identidad, telefono,
+        email, genero, fecha_nac, id_pais_nac, s_nombre,
         id_representante, id_representante_lector
     ) VALUES (
-        pi_p_nombre, pi_p_apellido, pi_s_apellido, pi_doc_identidad, pi_telefono, 
-        pi_email, pi_genero, pi_fecha_nac, v_id_pais_nac, pi_s_nombre, 
-        pi_id_rep, pi_id_rep_lector
+        pi_p_nombre, pi_p_apellido, pi_s_apellido, pi_doc_identidad, pi_telefono,
+        pi_email, pi_genero, pi_fecha_nac, v_id_pais_nac, pi_s_nombre,
+        v_id_rep, v_id_rep_lector
     )
     RETURNING id_lector INTO v_id_lector;
 
-    -- 4. Obtener la edad EXACTA usando la función nativa que creaste
+    -- 5. Calcular edad
     v_age := MJV_edad_miembro(v_id_lector);
 
-    -- 5. Registrar las preferencias de obras (Usando la columna 'prioridad')
+    -- [BRECHA 1] Bloqueo por deudas históricas en cualquier club anterior
+    v_tiene_deuda := MJV_fn_tiene_deuda_historica(v_id_lector);
+    IF v_tiene_deuda = 1 THEN
+        -- Revertir el INSERT del lector antes de lanzar el error
+        ROLLBACK;
+        RAISE_APPLICATION_ERROR(
+            -20054,
+            'INSCRIPCIÓN DENEGADA: El lector con documento ' || pi_doc_identidad
+            || ' tiene deudas pendientes de membresía en un club anterior. '
+            || 'Debe saldar su deuda antes de unirse a un nuevo club.'
+        );
+    END IF;
+
+    -- [BRECHA 2] Bloqueo permanente por inasistencia en este mismo club
+    v_vetado := MJV_fn_vetado_por_inasistencia(v_id_lector, v_id_club);
+    IF v_vetado = 1 THEN
+        ROLLBACK;
+        RAISE_APPLICATION_ERROR(
+            -20055,
+            'INSCRIPCIÓN DENEGADA: El lector con documento ' || pi_doc_identidad
+            || ' fue retirado del club "' || pi_nombre_club
+            || '" por inasistencia y tiene prohibido el reingreso permanentemente.'
+        );
+    END IF;
+
+    -- 6. Registrar preferencias
     INSERT INTO MJV_preferencia_obra (id_lector, isbn, prioridad) VALUES (v_id_lector, v_isbn1, 1);
     INSERT INTO MJV_preferencia_obra (id_lector, isbn, prioridad) VALUES (v_id_lector, v_isbn2, 2);
     INSERT INTO MJV_preferencia_obra (id_lector, isbn, prioridad) VALUES (v_id_lector, v_isbn3, 3);
 
-    -- 6. Iniciar historial de membresía activa (Usando columnas fecha_i y fecha_f)
+    -- 7. Iniciar historial de membresía (dispara MJV_tgr_un_club_activo)
     INSERT INTO MJV_historia_membresia (id_lector, id_club, fecha_i, fecha_f, estatus)
     VALUES (v_id_lector, v_id_club, SYSDATE, NULL, 'activo');
 
-    -- 7. Clasificar el tipo de grupo según la edad obtenida
-    -- (Nota: se usa 'jovenes' sin tilde para respetar el constraint MJV_grupo_ck_tipo)
+    -- 8. Clasificar tipo de grupo por edad
     IF v_age BETWEEN 6 AND 12 THEN
         v_tipo_grupo := 'niños';
     ELSIF v_age BETWEEN 13 AND 25 THEN
@@ -73,37 +115,40 @@ BEGIN
     ELSIF v_age > 25 THEN
         v_tipo_grupo := 'adultos';
     ELSE
-        RAISE_APPLICATION_ERROR(-20003, 'Error: La edad mínima es de 6 años.');
+        RAISE_APPLICATION_ERROR(-20003, 'Error: La edad mínima de ingreso es 6 años.');
     END IF;
 
-    -- 8. Buscar un grupo existente y activo de ese tipo en el club
+    -- 9. Buscar o crear el grupo correspondiente
     BEGIN
         SELECT id_grupo
           INTO v_id_grupo
           FROM MJV_grupo
-         WHERE id_club = v_id_club
+         WHERE id_club    = v_id_club
            AND tipo_grupo = v_tipo_grupo
-           AND ROWNUM = 1; 
+           AND ROWNUM = 1;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            -- Si no existe, se crea uno predeterminado insertando las columnas NOT NULL requeridas
             INSERT INTO MJV_grupo (id_club, tipo_grupo, fecha_creacion, dia_reunion, hora_reunion)
             VALUES (v_id_club, v_tipo_grupo, SYSDATE, 2, TO_DATE('17:00:00', 'HH24:MI:SS'))
             RETURNING id_grupo INTO v_id_grupo;
     END;
 
-    -- 9. Asignar al lector al grupo correspondiente 
-    -- La PK aquí incluye la fecha_i proveniente de la historia de membresía y su propia fec_i
+    -- 10. Asignar al grupo (dispara MJV_tgr_bloquear_inscripcion_libro_activo
+    --     y MJV_tgr_grupo_lleno → MJV_sp_split_grupo si aplica)
     INSERT INTO MJV_g_lec (id_lector, id_club, fecha_i, id_grupo, fec_i, fec_f)
     VALUES (v_id_lector, v_id_club, SYSDATE, v_id_grupo, SYSDATE, NULL);
 
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Inscripción transaccional exitosa. ID de Lector asignado: ' || v_id_lector || ' | Edad: ' || v_age || ' | Grupo: ' || v_tipo_grupo);
+    DBMS_OUTPUT.PUT_LINE(
+        'Inscripción exitosa. ID Lector: ' || v_id_lector
+        || ' | Edad: ' || v_age || ' | Grupo: ' || v_tipo_grupo
+    );
 EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
         RAISE;
 END MJV_sp_inscribir_miembro;
+/
 
 
 /* -- ejemplo de ejecución:
