@@ -1,30 +1,16 @@
 CREATE OR REPLACE PROCEDURE MJV_sp_registrar_pago_membresia (
-    pi_doc_identidad IN VARCHAR2,
+    pi_id_lector     IN NUMBER,
     pi_nombre_club   IN VARCHAR2,
     pi_monto         IN NUMBER,
     pi_moneda        IN VARCHAR2,
     pi_tasa          IN NUMBER
 ) IS
-    v_id_lector   NUMBER;
     v_id_club     NUMBER;
     v_fecha_i     DATE;
     v_monto_usd   NUMBER;
     v_cuota_anual CHAR(1);
 BEGIN
-    -- 1. Resolver lector
-    BEGIN
-        SELECT id_lector INTO v_id_lector
-          FROM MJV_lector
-         WHERE UPPER(TRIM(doc_identidad)) = UPPER(TRIM(pi_doc_identidad));
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(
-                -20010,
-                'Error: No se encontró ningún lector con el documento: ' || pi_doc_identidad
-            );
-    END;
-
-    -- 2. Resolver club
+    -- 1. Resolver club
     v_id_club := MJV_fn_obtener_id_club_por_nombre(pi_nombre_club);
 
     -- 3. [BRECHA 6] Verificar que el club cobra cuota antes de todo
@@ -42,7 +28,7 @@ BEGIN
     BEGIN
         SELECT fecha_i INTO v_fecha_i
           FROM MJV_historia_membresia
-         WHERE id_lector = v_id_lector
+         WHERE id_lector = pi_id_lector
            AND id_club   = v_id_club
            AND estatus   = 'activo';
     EXCEPTION
@@ -66,12 +52,12 @@ BEGIN
 
     -- 6. Registrar pago
     INSERT INTO MJV_pago_membresia (id_lector, id_club, fecha_i, fecha_pago, monto)
-    VALUES (v_id_lector, v_id_club, v_fecha_i, SYSDATE, v_monto_usd);
+    VALUES (pi_id_lector, v_id_club, v_fecha_i, SYSDATE, v_monto_usd);
 
     COMMIT;
     DBMS_OUTPUT.PUT_LINE(
         'Pago registrado: ' || ROUND(v_monto_usd, 2) || ' USD para lector ID '
-        || v_id_lector || ' en club ' || pi_nombre_club || '.'
+        || pi_id_lector || ' en club ' || pi_nombre_club || '.'
     );
 EXCEPTION
     WHEN OTHERS THEN
@@ -85,14 +71,14 @@ END MJV_sp_registrar_pago_membresia;
 SET SERVEROUTPUT ON;
 
 DECLARE
-    v_doc    VARCHAR2(20)  := '&documento_identidad_lector';
+    v_id_lec NUMBER        := &id_lector;
     v_club   VARCHAR2(150) := '&nombre_exacto_del_club';
     v_monto  NUMBER        := &monto_pagado;
     v_moneda VARCHAR2(3)   := '&codigo_moneda_ej_VES_o_USD';
     v_tasa   NUMBER        := &tasa_de_cambio_actual;
 BEGIN
     MJV_sp_registrar_pago_membresia(
-        pi_doc_identidad => v_doc,
+        pi_id_lector     => v_id_lec,
         pi_nombre_club   => v_club,
         pi_monto         => v_monto,
         pi_moneda        => v_moneda,
