@@ -1,0 +1,191 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="R04_CrecimientoAnual" language="java" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="d4000004-0004-4004-d004-400000000004">
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Clubes de Lectura"/>
+	<query language="SQL"><![CDATA[SELECT * FROM MJV_vw_r4_crecimiento_anual ORDER BY nombre_club ASC, anio ASC]]></query>
+	<field name="ID_CLUB" class="java.math.BigDecimal"/>
+	<field name="NOMBRE_CLUB" class="java.lang.String"/>
+	<field name="NOMBRE_PAIS" class="java.lang.String"/>
+	<field name="NOMBRE_CIUDAD" class="java.lang.String"/>
+	<field name="TIPO_CLUB" class="java.lang.String"/>
+	<field name="ANIO" class="java.math.BigDecimal"/>
+	<field name="NUEVOS_MIEMBROS" class="java.math.BigDecimal"/>
+	<field name="INGRESOS_USD" class="java.math.BigDecimal"/>
+	<field name="MIEMBROS_ANIO_ANTERIOR" class="java.math.BigDecimal"/>
+	<field name="INGRESOS_ANIO_ANTERIOR" class="java.math.BigDecimal"/>
+	<field name="PCT_CRECIMIENTO_MIEMBROS" class="java.math.BigDecimal"/>
+	<field name="PCT_CRECIMIENTO_ECONOMICO" class="java.math.BigDecimal"/>
+	<variable name="TOT_MIEMBROS_CLUB" resetType="Group" calculation="Sum" resetGroup="GROUP_CLUB" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{NUEVOS_MIEMBROS}]]></expression>
+	</variable>
+	<variable name="TOT_INGRESOS_CLUB" resetType="Group" calculation="Sum" resetGroup="GROUP_CLUB" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{INGRESOS_USD}]]></expression>
+	</variable>
+	<variable name="TOT_MIEMBROS_GLOBAL" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{NUEVOS_MIEMBROS}]]></expression>
+	</variable>
+	<variable name="TOT_INGRESOS_GLOBAL" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{INGRESOS_USD}]]></expression>
+	</variable>
+	<group name="GROUP_CLUB">
+		<expression><![CDATA[$F{ID_CLUB}]]></expression>
+		<groupHeader>
+			<band height="44">
+				<element kind="rectangle" uuid="d4000004-0004-4004-d004-400000000010" x="0" y="0" width="802" height="24" forecolor="#2C3B2D" backcolor="#2C3B2D">
+					<pen lineWidth="0.0"/>
+				</element>
+				<element kind="textField" uuid="d4000004-0004-4004-d004-400000000011" x="8" y="3" width="490" height="18" forecolor="#C8A97A" fontSize="10.0" bold="true">
+					<expression><![CDATA[$F{NOMBRE_CLUB}]]></expression>
+				</element>
+				<element kind="textField" uuid="d4000004-0004-4004-d004-400000000012" x="500" y="3" width="294" height="18" forecolor="#D4C5A9" fontSize="9.0">
+					<expression><![CDATA[$F{NOMBRE_CIUDAD} + ", " + $F{NOMBRE_PAIS} + "  ·  " + $F{TIPO_CLUB}]]></expression>
+				</element>
+				<element kind="rectangle" uuid="d4000004-0004-4004-d004-400000000013" x="0" y="25" width="802" height="18" forecolor="#4A7C59" backcolor="#4A7C59">
+					<pen lineWidth="0.0"/>
+				</element>
+				<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000014" x="8" y="28" width="40" height="13" forecolor="#FFFFFF" fontSize="7.5" bold="true" hTextAlign="Center">
+					<text><![CDATA[Año]]></text>
+				</element>
+				<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000015" x="52" y="28" width="80" height="13" forecolor="#FFFFFF" fontSize="7.5" bold="true" hTextAlign="Right">
+					<text><![CDATA[Nuevos Mbr.]]></text>
+				</element>
+				<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000016" x="136" y="28" width="80" height="13" forecolor="#FFFFFF" fontSize="7.5" bold="true" hTextAlign="Right">
+					<text><![CDATA[Mbr. Año Ant.]]></text>
+				</element>
+				<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000017" x="220" y="28" width="100" height="13" forecolor="#FFFFFF" fontSize="7.5" bold="true" hTextAlign="Center">
+					<text><![CDATA[% Crec. Miembros]]></text>
+				</element>
+				<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000018" x="324" y="28" width="90" height="13" forecolor="#FFFFFF" fontSize="7.5" bold="true" hTextAlign="Right">
+					<text><![CDATA[Ingresos USD]]></text>
+				</element>
+				<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000019" x="418" y="28" width="95" height="13" forecolor="#FFFFFF" fontSize="7.5" bold="true" hTextAlign="Right">
+					<text><![CDATA[Ingresos Año Ant.]]></text>
+				</element>
+				<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000020" x="517" y="28" width="100" height="13" forecolor="#FFFFFF" fontSize="7.5" bold="true" hTextAlign="Center">
+					<text><![CDATA[% Crec. Económico]]></text>
+				</element>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="22">
+				<element kind="rectangle" uuid="d4000004-0004-4004-d004-400000000022" x="0" y="0" width="802" height="22" forecolor="#2C3B2D" backcolor="#2C3B2D">
+					<pen lineWidth="0.0"/>
+				</element>
+				<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000023" x="8" y="4" width="120" height="14" forecolor="#C8A97A" fontSize="8.0" bold="true">
+					<text><![CDATA[TOTAL DEL CLUB:]]></text>
+				</element>
+				<element kind="textField" uuid="d4000004-0004-4004-d004-400000000024" x="135" y="4" width="80" height="14" forecolor="#FFFFFF" fontSize="8.0" bold="true">
+					<expression><![CDATA[$V{TOT_MIEMBROS_CLUB}.intValue() + " mbr."]]></expression>
+				</element>
+				<element kind="textField" uuid="d4000004-0004-4004-d004-400000000025" x="324" y="4" width="90" height="14" forecolor="#C8A97A" fontSize="8.0" bold="true" hTextAlign="Right">
+					<expression><![CDATA["$ " + String.format("%,.2f", $V{TOT_INGRESOS_CLUB}.doubleValue())]]></expression>
+				</element>
+			</band>
+		</groupFooter>
+	</group>
+	<title height="72">
+		<element kind="rectangle" uuid="d4000004-0004-4004-d004-400000000050" x="0" y="0" width="802" height="62" forecolor="#2C3B2D" backcolor="#2C3B2D">
+			<pen lineWidth="0.0"/>
+		</element>
+		<element kind="line" uuid="d4000004-0004-4004-d004-400000000051" x="0" y="62" width="802" height="1" forecolor="#C8A97A">
+			<pen lineWidth="2.0"/>
+		</element>
+		<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000052" x="0" y="8" width="802" height="32" forecolor="#FFFFFF" fontSize="20.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[ANÁLISIS FINANCIERO Y DE CRECIMIENTO ANUAL]]></text>
+		</element>
+		<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000053" x="0" y="42" width="802" height="16" forecolor="#C8A97A" fontSize="9.0" hTextAlign="Center">
+			<text><![CDATA[Sistema de Gestión · Clubes de Lectura · Grupo 4 MJV  ·  Todos los clubes · Comparativo año a año]]></text>
+		</element>
+	</title>
+	<pageHeader height="8"/>
+	<columnHeader/>
+	<detail>
+		<band height="18">
+			<element kind="rectangle" uuid="d4000004-0004-4004-d004-400000000060" x="0" y="0" width="802" height="18" forecolor="#EFF5EE" backcolor="#EFF5EE">
+				<printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 0]]></printWhenExpression>
+				<pen lineWidth="0.0"/>
+			</element>
+			<element kind="textField" uuid="d4000004-0004-4004-d004-400000000061" x="8" y="2" width="40" height="13" fontSize="8.0" bold="true" hTextAlign="Center">
+				<expression><![CDATA[$F{ANIO}.intValue()]]></expression>
+			</element>
+			<element kind="textField" uuid="d4000004-0004-4004-d004-400000000062" x="52" y="2" width="80" height="13" fontSize="8.0" hTextAlign="Right">
+				<expression><![CDATA[$F{NUEVOS_MIEMBROS}.intValue()]]></expression>
+			</element>
+			<element kind="textField" uuid="d4000004-0004-4004-d004-400000000063" x="136" y="2" width="80" height="13" forecolor="#7A7A6E" fontSize="8.0" hTextAlign="Right">
+				<expression><![CDATA[$F{MIEMBROS_ANIO_ANTERIOR} == null ? "(1.er año)" : $F{MIEMBROS_ANIO_ANTERIOR}.intValue() + ""]]></expression>
+			</element>
+			<element kind="textField" uuid="d4000004-0004-4004-d004-400000000064" x="220" y="2" width="100" height="13" forecolor="#5A8A3C" fontSize="8.0" bold="true" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{PCT_CRECIMIENTO_MIEMBROS} != null && $F{PCT_CRECIMIENTO_MIEMBROS}.doubleValue() >= 0]]></printWhenExpression>
+				<expression><![CDATA["+ " + $F{PCT_CRECIMIENTO_MIEMBROS}.toString() + " %"]]></expression>
+			</element>
+			<element kind="textField" uuid="d4000004-0004-4004-d004-400000000065" x="220" y="2" width="100" height="13" forecolor="#8B4513" fontSize="8.0" bold="true" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{PCT_CRECIMIENTO_MIEMBROS} != null && $F{PCT_CRECIMIENTO_MIEMBROS}.doubleValue() < 0]]></printWhenExpression>
+				<expression><![CDATA[$F{PCT_CRECIMIENTO_MIEMBROS}.toString() + " %"]]></expression>
+			</element>
+			<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000066" x="220" y="2" width="100" height="13" forecolor="#7A7A6E" fontSize="8.0" italic="true" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{PCT_CRECIMIENTO_MIEMBROS} == null]]></printWhenExpression>
+				<text><![CDATA[N/D]]></text>
+			</element>
+			<element kind="textField" uuid="d4000004-0004-4004-d004-400000000067" x="324" y="2" width="90" height="13" fontSize="8.0" hTextAlign="Right">
+				<expression><![CDATA["$ " + String.format("%,.2f", $F{INGRESOS_USD}.doubleValue())]]></expression>
+			</element>
+			<element kind="textField" uuid="d4000004-0004-4004-d004-400000000068" x="418" y="2" width="95" height="13" forecolor="#7A7A6E" fontSize="8.0" hTextAlign="Right">
+				<expression><![CDATA[$F{INGRESOS_ANIO_ANTERIOR} == null ? "—" : "$ " + String.format("%,.2f", $F{INGRESOS_ANIO_ANTERIOR}.doubleValue())]]></expression>
+			</element>
+			<element kind="textField" uuid="d4000004-0004-4004-d004-400000000069" x="517" y="2" width="100" height="13" forecolor="#5A8A3C" fontSize="8.0" bold="true" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{PCT_CRECIMIENTO_ECONOMICO} != null && $F{PCT_CRECIMIENTO_ECONOMICO}.doubleValue() >= 0]]></printWhenExpression>
+				<expression><![CDATA["+ " + $F{PCT_CRECIMIENTO_ECONOMICO}.toString() + " %"]]></expression>
+			</element>
+			<element kind="textField" uuid="d4000004-0004-4004-d004-400000000070" x="517" y="2" width="100" height="13" forecolor="#8B4513" fontSize="8.0" bold="true" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{PCT_CRECIMIENTO_ECONOMICO} != null && $F{PCT_CRECIMIENTO_ECONOMICO}.doubleValue() < 0]]></printWhenExpression>
+				<expression><![CDATA[$F{PCT_CRECIMIENTO_ECONOMICO}.toString() + " %"]]></expression>
+			</element>
+			<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000071" x="517" y="2" width="100" height="13" forecolor="#7A7A6E" fontSize="8.0" italic="true" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{PCT_CRECIMIENTO_ECONOMICO} == null]]></printWhenExpression>
+				<text><![CDATA[N/D]]></text>
+			</element>
+			<element kind="line" uuid="d4000004-0004-4004-d004-400000000072" x="0" y="17" width="802" height="1" forecolor="#D8E8D8"/>
+		</band>
+	</detail>
+	<columnFooter/>
+	<pageFooter height="28">
+		<element kind="line" uuid="d4000004-0004-4004-d004-400000000090" x="0" y="2" width="802" height="1" forecolor="#4A7C59">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000091" x="0" y="8" width="400" height="14" forecolor="#5C5C50" fontSize="7.5">
+			<text><![CDATA[Clubes de Lectura · NRC 25758 · Sistema de Gestión MJV]]></text>
+		</element>
+		<element kind="textField" uuid="d4000004-0004-4004-d004-400000000092" x="640" y="8" width="65" height="14" forecolor="#5C5C50" fontSize="7.5" hTextAlign="Right">
+			<expression><![CDATA["Pág. " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="d4000004-0004-4004-d004-400000000093" x="705" y="8" width="92" height="14" forecolor="#5C5C50" fontSize="7.5" evaluationTime="Report">
+			<expression><![CDATA[" de " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+	<summary height="42">
+		<element kind="line" uuid="d4000004-0004-4004-d004-400000000080" x="0" y="2" width="802" height="1" forecolor="#C8A97A">
+			<pen lineWidth="1.5"/>
+		</element>
+		<element kind="rectangle" uuid="d4000004-0004-4004-d004-400000000081" x="0" y="4" width="802" height="36" forecolor="#2C3B2D" backcolor="#2C3B2D">
+			<pen lineWidth="0.0"/>
+		</element>
+		<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000082" x="8" y="8" width="180" height="16" forecolor="#C8A97A" fontSize="10.0" bold="true">
+			<text><![CDATA[TOTALES GLOBALES:]]></text>
+		</element>
+		<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000083" x="200" y="8" width="100" height="16" forecolor="#D4C5A9" fontSize="8.5" bold="true">
+			<text><![CDATA[Total Membresías:]]></text>
+		</element>
+		<element kind="textField" uuid="d4000004-0004-4004-d004-400000000084" x="305" y="8" width="80" height="16" forecolor="#FFFFFF" fontSize="9.5" bold="true">
+			<expression><![CDATA[$V{TOT_MIEMBROS_GLOBAL}.intValue() + " mbr."]]></expression>
+		</element>
+		<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000085" x="410" y="8" width="110" height="16" forecolor="#D4C5A9" fontSize="8.5" bold="true">
+			<text><![CDATA[Total Ingresos (USD):]]></text>
+		</element>
+		<element kind="textField" uuid="d4000004-0004-4004-d004-400000000086" x="525" y="8" width="120" height="16" forecolor="#C8A97A" fontSize="10.0" bold="true">
+			<expression><![CDATA["$ " + String.format("%,.2f", $V{TOT_INGRESOS_GLOBAL}.doubleValue())]]></expression>
+		</element>
+		<element kind="staticText" uuid="d4000004-0004-4004-d004-400000000087" x="8" y="26" width="700" height="12" forecolor="#7A7A6E" fontSize="7.0" italic="true">
+			<text><![CDATA[Nota: N/D = primer año sin año anterior para comparar. Ingresos solo en clubes independientes (cuota_anual = S).]]></text>
+		</element>
+	</summary>
+</jasperReport>

@@ -138,10 +138,7 @@ GROUP BY
     crm.conclusiones,
     c.nombre_club,
     g.tipo_grupo,
-    crm.fecha
-ORDER BY
-    crm.mod_id_lector,
-    crm.fecha DESC;
+    crm.fecha;
 
 
 -- =============================================================================
@@ -417,3 +414,128 @@ ORDER BY
 --      AND object_name LIKE 'MJV_VW_R%'
 --    ORDER BY object_name;
 -- =============================================================================
+
+
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R01
+-- Une las 4 vistas del reporte 1 en una sola consulta plana.
+-- El query del JRXML queda: SELECT * FROM MJV_vw_r1_consolidado WHERE id_lector = ?
+-- Estrategia: fm JOIN hc (membresías) LEFT JOIN la (libros analizados)
+--             Los favoritos van como subconsultas escalares (no generan producto cartesiano)
+-- =============================================================================
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R02
+-- Une MJV_vw_r2_ficha_club + MJV_vw_r2_libros_por_club en una sola vista plana.
+-- Query JRXML: SELECT * FROM MJV_vw_r2_consolidado WHERE id_club = ?
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_r2_consolidado AS
+SELECT
+    fc.id_club,
+    fc.nombre_club,
+    fc.nombre_pais,
+    fc.nombre_ciudad,
+    fc.cod_postal,
+    fc.tipo_club,
+    fc.grupos_adultos,
+    fc.grupos_jovenes,
+    fc.grupos_ninos,
+    fc.total_grupos,
+    lc.isbn,
+    lc.titulo                              AS titulo_libro,
+    lc.autores                             AS autores_libro,
+    lc.genero                              AS genero_libro,
+    lc.valoracion_promedio_club,
+    lc.cantidad_grupos_que_lo_analizaron
+FROM
+    MJV_vw_r2_ficha_club           fc
+    LEFT JOIN MJV_vw_r2_libros_por_club lc ON lc.id_club = fc.id_club
+ORDER BY
+    fc.id_club,
+    lc.valoracion_promedio_club DESC NULLS LAST,
+    lc.titulo ASC;
+
+
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R03
+-- Une MJV_vw_r3_ficha_libro + MJV_vw_r3_analisis_por_grupo en una sola vista plana.
+-- Query JRXML: SELECT * FROM MJV_vw_r3_consolidado WHERE isbn = ?
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_r3_consolidado AS
+SELECT
+    fl.isbn,
+    fl.titulo,
+    fl.tipo_narrativa,
+    fl.sinopsis,
+    fl.genero,
+    fl.primera_edicion,
+    fl.total_paginas,
+    fl.pais_origen,
+    fl.autores,
+    fl.valoracion_global,
+    ag.id_club,
+    ag.nombre_club,
+    ag.pais_club,
+    ag.ciudad_club,
+    ag.id_grupo,
+    ag.tipo_grupo,
+    ag.valoracion                          AS valoracion_grupo,
+    ag.conclusiones,
+    TO_CHAR(ag.fecha_cierre, 'DD/MM/YYYY') AS fecha_cierre,
+    ag.nombre_moderador
+FROM
+    MJV_vw_r3_ficha_libro               fl
+    LEFT JOIN MJV_vw_r3_analisis_por_grupo ag ON ag.isbn = fl.isbn
+ORDER BY
+    fl.isbn,
+    ag.valoracion DESC NULLS LAST,
+    ag.fecha_cierre DESC NULLS LAST;
+
+
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R01
+CREATE OR REPLACE VIEW MJV_vw_r1_consolidado AS
+SELECT
+    fm.id_lector,
+    fm.nombre_completo,
+    fm.doc_identidad,
+    fm.telefono,
+    fm.email,
+    fm.genero,
+    TO_CHAR(fm.fecha_nac, 'DD/MM/YYYY')        AS fecha_nacimiento,
+    fm.edad,
+    fm.pais_nacimiento,
+    fm.nacionalidad,
+    -- Libros favoritos (subconsulta escalar, no genera filas extra)
+    (SELECT pr.titulo FROM MJV_vw_r1_preferencias pr
+      WHERE pr.id_lector = fm.id_lector AND pr.prioridad = 1) AS favorito_1,
+    (SELECT pr.titulo FROM MJV_vw_r1_preferencias pr
+      WHERE pr.id_lector = fm.id_lector AND pr.prioridad = 2) AS favorito_2,
+    (SELECT pr.titulo FROM MJV_vw_r1_preferencias pr
+      WHERE pr.id_lector = fm.id_lector AND pr.prioridad = 3) AS favorito_3,
+    -- Membresía
+    hc.id_club,
+    hc.nombre_club,
+    hc.pais_club,
+    hc.ciudad_club,
+    TO_CHAR(hc.fecha_ingreso, 'DD/MM/YYYY')    AS fecha_ingreso_club,
+    TO_CHAR(hc.fecha_retiro,  'DD/MM/YYYY')    AS fecha_retiro_club,
+    hc.estatus,
+    hc.motivo_retiro,
+    TRUNC(MONTHS_BETWEEN(NVL(hc.fecha_retiro, SYSDATE), hc.fecha_ingreso)) AS meses_antiguedad,
+    -- Libro analizado (moderador en reunión de cierre del mismo club)
+    la.titulo       AS libro_analizado,
+    la.autores      AS autores_libro,
+    la.valoracion,
+    la.conclusiones,
+    TO_CHAR(la.fecha_reunion, 'DD/MM/YYYY')    AS fecha_cierre_libro
+FROM
+    MJV_vw_r1_ficha_miembro       fm
+    JOIN MJV_vw_r1_historial_clubes hc ON hc.id_lector = fm.id_lector
+    LEFT JOIN MJV_vw_r1_libros_analizados la
+           ON la.id_lector  = fm.id_lector
+          AND la.nombre_club = hc.nombre_club
+ORDER BY
+    fm.id_lector,
+    hc.estatus ASC,
+    hc.fecha_ingreso DESC,
+    la.fecha_reunion DESC;
