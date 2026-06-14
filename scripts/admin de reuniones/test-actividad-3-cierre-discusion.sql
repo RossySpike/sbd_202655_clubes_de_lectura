@@ -1,50 +1,67 @@
 SET SERVEROUTPUT ON;
 SET VERIFY OFF;
 
-ACCEPT p_club_nombre  PROMPT 'Ingrese el Nombre del Club: ';
-ACCEPT p_grupo_tipo   PROMPT 'Ingrese el Tipo de Grupo (adultos/jovenes/ninos): ';
-ACCEPT p_libro_titulo PROMPT 'Ingrese el Título del Libro a cerrar: ';
-ACCEPT p_fecha_reun   PROMPT 'Ingrese la Fecha de la Reunión (DD/MM/YYYY): ';
-ACCEPT p_conclusiones PROMPT 'Ingrese las conclusiones de la discusión: ';
-ACCEPT p_valoracion   PROMPT 'Defina la valoración final del libro (1 al 5): ';
+-- 1. Captura interactiva usando IDs numéricos y textos para comentarios
+ACCEPT p_id_club        NUMBER PROMPT 'ID numérico del club (ej: 1) [1]: '
+ACCEPT p_grupo          CHAR   PROMPT 'Tipo de grupo [adultos]: '
+ACCEPT p_titulo_libro   CHAR   PROMPT 'Título del libro a cerrar [El imperio final (Nacidos de la bruma)]: '
+ACCEPT p_fecha          CHAR   PROMPT 'Fecha de la reunión (DD/MM/YYYY) [15/07/2026]: '
+ACCEPT p_conclusiones   CHAR   PROMPT 'Ingrese las conclusiones de la discusión: '
+ACCEPT p_valoracion     NUMBER PROMPT 'Defina la valoración final del libro (1 al 5): '
 
 DECLARE
-    -- CORREGIDO: Tipos mapeados uno a uno con script_final.sql
-    v_id_club        MJV_club.id_club%TYPE;
-    v_id_grupo       MJV_grupo.id_grupo%TYPE;
-    v_isbn           MJV_Libro.isbn%TYPE;
-    v_fecha_reunion  DATE := TO_DATE('&p_fecha_reun', 'DD/MM/YYYY');
+    v_id_club        NUMBER := TO_NUMBER(NVL('&p_id_club', '1'));
+    v_id_grupo       NUMBER;
+    v_titulo_libro   VARCHAR2(4000) := NVL('&p_titulo_libro', 'El imperio final (Nacidos de la bruma)');
+    v_isbn           VARCHAR2(20);
+    v_fecha          DATE := TO_DATE(NVL('&p_fecha', '15/07/2026'), 'DD/MM/YYYY');
     v_valoracion     NUMBER := TO_NUMBER('&p_valoracion');
+    v_conclusiones   VARCHAR2(4000) := '&p_conclusiones';
+    
+    v_nombre_club    VARCHAR2(200);
+    v_grupo_text     VARCHAR2(100) := LOWER(TRIM(NVL('&p_grupo', 'adultos')));
 BEGIN
-    DBMS_OUTPUT.PUT_LINE('=== PROCESANDO CIERRE DE CICLO DE LECTURA ===');
+    -- 2. Resolver Nombre del Club a partir del ID ingresado
+    BEGIN
+        SELECT nombre_club INTO v_nombre_club FROM MJV_club WHERE id_club = v_id_club;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20090, 'Error: No se encontró un club con el ID ' || v_id_club);
+    END;
 
-    -- CORREGIDO: Mapeos exactos sobre tablas maestras
-    SELECT id_club INTO v_id_club 
-    FROM MJV_club 
-    WHERE UPPER(TRIM(nombre_club)) = UPPER(TRIM('&p_club_nombre'))
-      AND ROWNUM = 1;
-    
-    SELECT id_grupo INTO v_id_grupo 
-    FROM MJV_grupo 
-    WHERE UPPER(TRIM(tipo_grupo)) = UPPER(TRIM('&p_grupo_tipo')) 
-      AND id_club = v_id_club
-      AND ROWNUM = 1;
-    
-    v_isbn := MJV_fn_obtener_isbn_por_titulo('&p_libro_titulo');
+    -- 3. Resolver ID de Grupo a partir de su tipo y ID de club
+    BEGIN
+        SELECT id_grupo INTO v_id_grupo
+          FROM MJV_grupo 
+         WHERE id_club = v_id_club 
+           AND LOWER(TRIM(tipo_grupo)) = v_grupo_text;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20091, 'Error: No se encontró un grupo de tipo "' || v_grupo_text || '" en el club ' || v_nombre_club);
+    END;
 
-    -- Ejecución del procedimiento corregido
+    -- 4. Traducir Título del Libro a ISBN usando tu función de catálogo
+    v_isbn := MJV_fn_obtener_isbn_por_titulo(v_titulo_libro);
+
+    -- Imprimir encabezado de auditoría técnica amigable
+    DBMS_OUTPUT.PUT_LINE('--------------------------------------------------');
+    DBMS_OUTPUT.PUT_LINE('⚙️ [DATOS PROCESADOS INTERNAMENTE - CIERRE DE REUNIÓN]');
+    DBMS_OUTPUT.PUT_LINE(' Club / Sede:      ' || v_nombre_club || ' (ID: ' || v_id_club || ')');
+    DBMS_OUTPUT.PUT_LINE(' Grupo Evaluado:   ' || UPPER(v_grupo_text) || ' (ID: ' || v_id_grupo || ')');
+    DBMS_OUTPUT.PUT_LINE(' Libro / Obra:     ' || v_titulo_libro || ' [ISBN: ' || v_isbn || ']');
+    DBMS_OUTPUT.PUT_LINE(' Fecha de Sesión:  ' || TO_CHAR(v_fecha, 'DD-MM-YYYY'));
+    DBMS_OUTPUT.PUT_LINE(' Valoración Dada:  ' || v_valoracion || ' / 5 estrellas');
+    DBMS_OUTPUT.PUT_LINE('--------------------------------------------------');
+
+    -- Invocación al procedimiento principal de la Actividad 3
     MJV_sp_cerrar_discusion_reunion(
         pi_id_club       => v_id_club,
         pi_id_grupo      => v_id_grupo,
-        pi_fecha_reunion => v_fecha_reunion,
+        pi_fecha_reunion => v_fecha,
         pi_isbn          => v_isbn,
-        pi_conclusiones  => '&p_conclusiones',
+        pi_conclusiones  => v_conclusiones,
         pi_valoracion    => v_valoracion
     );
 
-    DBMS_OUTPUT.PUT_LINE('✔ Ciclo de lectura cerrado exitosamente para el ISBN: ' || v_isbn);
-EXCEPTION
-    WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('❌ ERROR AL CERRAR LA DISCUSIÓN: ' || SQLERRM);
 END;
 /

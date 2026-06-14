@@ -1345,3 +1345,95 @@ INSERT INTO MJV_elenco (id_lector, isbn, id_club, id_obra_act) VALUES (
   (SELECT id_club FROM MJV_club WHERE nombre_club = 'Club de Lectura Guayana'),
   (SELECT id_obra_act FROM MJV_obra_actuada WHERE titulo = 'Snow Crash: El Metaverso' AND id_club = (SELECT id_club FROM MJV_club WHERE nombre_club = 'Club de Lectura Guayana'))
 );
+
+-- =====================================================================
+-- AJUSTES COMPLEMENTARIOS: SECUELAS DE LIBROS
+-- =====================================================================
+
+-- Enlazar Libro 1 con su secuela Libro 2 
+UPDATE MJV_libro 
+SET id_libro_siguiente = 2 
+WHERE id_libro = 1;
+
+-- Enlazar Libro 3 con su secuela Libro 4
+UPDATE MJV_libro 
+SET id_libro_siguiente = 4 
+WHERE id_libro = 3;
+
+-- =====================================================================
+-- AJUSTES COMPLEMENTARIOS: LECTORES INACTIVOS / RETIRADOS
+-- =====================================================================
+
+-- Forzar retiro de un lector de perfil Adulto del Club 1 por motivos de viaje
+UPDATE MJV_historia_membresia 
+SET estatus = 'inactivo', 
+    fecha_f = TO_DATE('2026-02-15', 'YYYY-MM-DD'), 
+    motivo_retiro = 'Mudanza internacional fuera del área de cobertura'
+WHERE id_lector = (SELECT MIN(id_lector) FROM MJV_lector WHERE apellido LIKE '%Club1A%');
+
+-- Forzar retiro de un lector de perfil Joven del Club 2 por falta de tiempo
+UPDATE MJV_historia_membresia 
+SET estatus = 'inactivo', 
+    fecha_f = TO_DATE('2026-04-10', 'YYYY-MM-DD'), 
+    motivo_retiro = 'Incompatibilidad de horarios académicos'
+WHERE id_lector = (SELECT MIN(id_lector) FROM MJV_lector WHERE apellido LIKE '%Club2J%');
+
+-- Forzar retiro de un lector de perfil Adulto del Club 3 por retiro voluntario
+UPDATE MJV_historia_membresia 
+SET estatus = 'inactivo', 
+    fecha_f = TO_DATE('2026-05-20', 'YYYY-MM-DD'), 
+    motivo_retiro = 'Retiro voluntario formalizado'
+WHERE id_lector = (SELECT MAX(id_lector) FROM MJV_lector WHERE apellido LIKE '%Club3A%');
+
+-- =====================================================================
+-- REGISTRO DE REPRESENTANTES LEGALES
+-- (Papás, Mamás o Tutores independientes con pocos menores a cargo)
+-- =====================================================================
+
+INSERT INTO MJV_representante (p_nombre, p_apellido, doc_identidad, telefono, email, id_pais_res, id_ciudad_res) 
+VALUES ('Carlos', 'Gómez', 'V-REP01', '+584141112233', 'carlos.gomez@email.com', 1, 1);
+
+INSERT INTO MJV_representante (p_nombre, p_apellido, doc_identidad, telefono, email, id_pais_res, id_ciudad_res) 
+VALUES ('María', 'Rodríguez', 'V-REP02', '+584124445566', 'maria.rod@email.com', 1, 1);
+
+INSERT INTO MJV_representante (p_nombre, p_apellido, doc_identidad, telefono, email, id_pais_res, id_ciudad_res) 
+VALUES ('Andrés', 'Fernández', 'V-REP03', '+584167778899', 'andres.fer@email.com', 1, 1);
+
+INSERT INTO MJV_representante (p_nombre, p_apellido, doc_identidad, telefono, email, id_pais_res, id_ciudad_res) 
+VALUES ('Laura', 'Martínez', 'V-REP04', '+584249990011', 'laura.mar@email.com', 1, 1);
+
+INSERT INTO MJV_representante (p_nombre, p_apellido, doc_identidad, telefono, email, id_pais_res, id_ciudad_res) 
+VALUES ('Jorge', 'Álvarez', 'V-REP05', '+584142223344', 'jorge.alv@email.com', 1, 1);
+
+
+-- =====================================================================
+ --ASIGNACIÓN INDIVIDUAL POR NÚCLEO FAMILIAR--
+
+-- =====================================================================
+
+-- Familia 1: Carlos Gómez (V-REP01) representa a dos hermanos en el Club 1
+UPDATE MJV_lector 
+SET id_representante = (SELECT id_representante FROM MJV_representante WHERE doc_identidad = 'V-REP01')
+WHERE doc_identidad IN ('V-NIN01', 'V-NIN02');
+
+-- Familia 2: María Rodríguez (V-REP02) representa a tres niños en el Club 1 y 2
+UPDATE MJV_lector 
+SET id_representante = (SELECT id_representante FROM MJV_representante WHERE doc_identidad = 'V-REP02')
+WHERE doc_identidad IN ('V-NIN03', 'V-NIN04', 'V-NIN05');
+
+-- Familia 3: Andrés Fernández (V-REP03) representa a un hijo único en el Club 2
+UPDATE MJV_lector 
+SET id_representante = (SELECT id_representante FROM MJV_representante WHERE doc_identidad = 'V-REP03')
+WHERE doc_identidad IN ('V-NIN06');
+
+-- Familia 4: Laura Martínez (V-REP04) representa a dos niños en el Club 3
+UPDATE MJV_lector 
+SET id_representante = (SELECT id_representante FROM MJV_representante WHERE doc_identidad = 'V-REP04')
+WHERE doc_identidad IN ('V-NIN07', 'V-NIN08');
+
+-- Familia 5: Jorge Álvarez (V-REP05) representa a dos hermanos en el Club 4
+UPDATE MJV_lector 
+SET id_representante = (SELECT id_representante FROM MJV_representante WHERE doc_identidad = 'V-REP05')
+WHERE doc_identidad IN ('V-NIN13', 'V-NIN14');
+
+COMMIT;

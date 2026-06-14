@@ -111,44 +111,47 @@ END;
 CREATE OR REPLACE FUNCTION MJV_conversion_monetaria(
   p_monto          NUMBER,
   p_moneda_origen  VARCHAR2,
-  p_moneda_destino VARCHAR2,
   p_tasa           NUMBER
 ) RETURN NUMBER
 IS
-  v_origen  VARCHAR2(3) := UPPER(TRIM(p_moneda_origen));
-  v_destino VARCHAR2(3) := UPPER(TRIM(p_moneda_destino));
-  v_count   NUMBER;
+  v_origen        VARCHAR2(3) := UPPER(TRIM(p_moneda_origen));
+  v_destino       CONSTANT VARCHAR2(3) := 'USD'; -- Moneda destino fija por requerimiento
+  v_count_origen  NUMBER := 0;
 BEGIN
-  IF p_monto IS NULL OR p_tasa IS NULL THEN
+  -- 1. Control de Nulos: Si el monto es nulo, no hay nada que transformar
+  IF p_monto IS NULL THEN
     RETURN NULL;
   END IF;
 
-    IF v_origen = v_destino THEN
-    RAISE_APPLICATION_ERROR(-20105, 'No se puede realizar la conversion porque las monedas son la misma.');
+  -- 2. Regla de Eficiencia: Si la moneda origen ya es USD, se retorna el monto directo
+  -- No se requiere validar tasas ni consultar la base de datos
+  IF v_origen = v_destino THEN
+    RETURN ROUND(p_monto, 2);
+  END IF;
+
+  -- 3. Validaciones obligatorias si es una moneda extranjera distinta a USD
+  IF p_tasa IS NULL THEN
+    RETURN NULL;
   END IF;
 
   IF p_tasa <= 0 THEN
-    RAISE_APPLICATION_ERROR(-20101, 'La tasa de conversión debe ser mayor que cero.');
+    RAISE_APPLICATION_ERROR(-20101, 'La tasa de conversión hacia USD debe ser mayor que cero.');
   END IF;
 
-  SELECT COUNT(*) INTO v_count
-  FROM MJV_pais
-  WHERE moneda_local = v_origen;
+  -- 4. Verificación de integridad: Validar que la moneda origen exista en el catálogo de países
+  SELECT COUNT(*)
+    INTO v_count_origen
+    FROM MJV_pais
+   WHERE moneda_local = v_origen;
 
-  IF v_count = 0 THEN
-    RAISE_APPLICATION_ERROR(-20102, 'Moneda origen no registrada: ' || v_origen);
+  IF v_count_origen = 0 THEN
+    RAISE_APPLICATION_ERROR(-20102, 'Moneda origen no registrada en el sistema: ' || v_origen);
   END IF;
 
-  SELECT COUNT(*) INTO v_count
-  FROM MJV_pais
-  WHERE moneda_local = v_destino;
-
-  IF v_count = 0 THEN
-    RAISE_APPLICATION_ERROR(-20103, 'Moneda destino no registrada: ' || v_destino);
-  END IF;
-
+  -- 5. Ejecución del cálculo monetario (Monto Origen / Tasa = Equivalente en USD)
   RETURN ROUND(p_monto / p_tasa, 2);
-END MJV_conversion_monetaria;  
+END MJV_conversion_monetaria;
+/ 
 
 
 CREATE OR REPLACE FUNCTION MJV_edad_miembro(p_id_lector NUMBER)
@@ -242,54 +245,69 @@ END MJV_promedio_part_mensual_tipo_grupo;
 -- Porcentaje de asistencia (0-100) de un lector en un club durante un bimestre.
 -- Bimestre 1 = ene-feb, 2 = mar-abr, 3 = may-jun, 4 = jul-ago, 5 = sep-oct, 6 = nov-dic.
 CREATE OR REPLACE FUNCTION MJV_participacion_bimestre_miembro(
-  p_id_lector NUMBER,
-  p_id_club   NUMBER,
-  p_bimestre  NUMBER,
-  p_anio      NUMBER
+    p_id_lector NUMBER,
+    p_id_club   NUMBER,
+    p_bimestre  NUMBER,
+    p_anio      NUMBER
 ) RETURN NUMBER
 IS
-  v_mes_ini   NUMBER;
-  v_mes_fin   NUMBER;
-  v_esperadas NUMBER;
-  v_faltas    NUMBER;
+    v_mes_ini   NUMBER;
+    v_mes_fin   NUMBER;
+    v_esperadas NUMBER;
+    v_faltas    NUMBER;
 BEGIN
-  IF p_bimestre < 1 OR p_bimestre > 6 THEN
-    RAISE_APPLICATION_ERROR(-20121, 'El bimestre debe estar entre 1 y 6.');
-  END IF;
- v_mes_ini := (p_bimestre - 1) * 2 + 1;
-  v_mes_fin := p_bimestre * 2;
+    -- Validar rangos de bimestres lógicos
+    IF p_bimestre < 1 OR p_bimestre > 6 THEN
+        RAISE_APPLICATION_ERROR(-20121, 'El bimestre debe estar entre 1 y 6.');
+    END IF;
+    
+    v_mes_ini := (p_bimestre - 1) * 2 + 1;
+    v_mes_fin := p_bimestre * 2;
 
-  -- Reuniones totales programadas y ejecutadas a las que el lector pertenecía en ese bimestre
-  SELECT COUNT(*)
-  INTO v_esperadas
-  FROM MJV_calendario_reunion_mes crm
-  JOIN MJV_g_lec gl ON gl.id_grupo = crm.id_grupo AND gl.id_club = p_id_club
-  WHERE gl.id_lector = p_id_lector
-    AND gl.id_club   = p_id_club
-    AND crm.realizada = 'S'
-    AND EXTRACT(YEAR FROM crm.fecha) = p_anio
-    AND EXTRACT(MONTH FROM crm.fecha) BETWEEN v_mes_ini AND v_mes_fin
-    AND crm.fecha BETWEEN gl.fec_i AND NVL(gl.fec_f, TO_DATE('31/12/9999', 'DD/MM/YYYY'));
+    -- 1. CORREGIDO: Reuniones totales que dictó el grupo al que pertenece el lector en ese bimestre.
+    -- Buscamos el grupo activo del lector en este club para saber cuál es su universo obligatorio.
+    SELECT COUNT(*)
+      INTO v_esperadas
+      FROM MJV_calendario_reunion_mes crm
+     WHERE crm.id_club = p_id_club
+       AND crm.realizada = 'S'
+       AND EXTRACT(YEAR FROM crm.fecha) = p_anio
+       AND EXTRACT(MONTH FROM crm.fecha) BETWEEN v_mes_ini AND v_mes_fin
+       AND crm.id_grupo = (
+           SELECT gl.id_grupo 
+             FROM MJV_g_lec gl 
+            WHERE gl.id_lector = p_id_lector 
+              AND gl.id_club = p_id_club 
+              -- Evaluamos la inscripción que inició antes o durante este bimestre
+              AND EXTRACT(YEAR FROM gl.fec_i) <= p_anio
+              AND ROWNUM = 1
+       );
 
-  IF v_esperadas = 0 THEN
-    RETURN 100;
-  END IF;
+    -- Si el grupo no ha realizado reuniones en este bimestre, no hay faltas posibles (0%)
+    IF v_esperadas = 0 THEN
+        RETURN 0;
+    END IF;
 
-  -- Inasistencias registradas del lector en ese mismo periodo
-  SELECT COUNT(*)
-  INTO v_faltas
-  FROM MJV_inasistencia i
-  JOIN MJV_calendario_reunion_mes crm ON crm.id_grupo = i.id_grupo AND crm.fecha = i.fecha_reunion
-  WHERE i.id_lector = p_id_lector
-    AND i.id_club   = p_id_club
-    AND crm.realizada = 'S'
-    AND EXTRACT(YEAR FROM crm.fecha) = p_anio
-    AND EXTRACT(MONTH FROM crm.fecha) BETWEEN v_mes_ini AND v_mes_fin;
+    -- 2. Inasistencias registradas del lector en ese mismo periodo bimensual
+    SELECT COUNT(*)
+      INTO v_faltas
+      FROM MJV_inasistencia i
+      JOIN MJV_calendario_reunion_mes crm 
+        ON crm.id_club = i.id_club 
+       AND crm.id_grupo = i.id_grupo 
+       AND crm.fecha = i.fecha_reunion 
+       AND crm.isbn = i.isbn
+     WHERE i.id_lector = p_id_lector
+       AND i.id_club   = p_id_club
+       AND crm.realizada = 'S'
+       AND EXTRACT(YEAR FROM crm.fecha) = p_anio
+       AND EXTRACT(MONTH FROM crm.fecha) BETWEEN v_mes_ini AND v_mes_fin;
 
-  RETURN ROUND(((v_esperadas - v_faltas) / v_esperadas) * 100, 2);
+    -- RETORNA DIRECTAMENTE EL % DE INASISTENCIA (FALTAS)
+    -- Ejemplo: 3 faltas de 10 reuniones = 30.00%
+    RETURN ROUND((v_faltas / v_esperadas) * 100, 2);
 END MJV_participacion_bimestre_miembro;  
 /
-
 
 -- SPLITS:      Max       Min
 -- ADULTOS      30        10
