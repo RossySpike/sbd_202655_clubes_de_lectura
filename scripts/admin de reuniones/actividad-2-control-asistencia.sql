@@ -1,4 +1,9 @@
 -- =============================================================================
+-- *** NO EJECUTAR — BORRADOR HISTÓRICO ***
+-- Este archivo es una versión anterior absorbida por complemento_script_final.sql.
+-- MJV_sp_registrar_asistencia_miembro y MJV_tgr_retirar_por_inasistencia
+-- viven en complemento_script_final.sql (versión final).
+-- =============================================================================
 -- ADMINISTRACIÓN DE REUNIONES - ACTIVIDAD 2 (CORREGIDO)
 -- Registro de asistencia/inasistencia y penalización del 30% calculada de 
 -- =============================================================================

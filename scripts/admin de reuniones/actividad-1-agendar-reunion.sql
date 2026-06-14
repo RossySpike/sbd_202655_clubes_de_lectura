@@ -1,4 +1,9 @@
 -- =============================================================================
+-- *** NO EJECUTAR — BORRADOR HISTÓRICO ***
+-- Este archivo es una versión anterior absorbida por complemento_script_final.sql.
+-- El SP MJV_sp_agendar_reunion_mes vive en complemento_script_final.sql (versión final).
+-- Ejecutar este archivo después del complemento sobreescribiría la versión correcta.
+-- =============================================================================
 -- ADMINISTRACIÓN DE REUNIONES - ACTIVIDAD 1 (CORREGIDO)
 -- Procedimiento para generar el calendario de reuniones mensuales y asignar
 -- un moderador al evento con todas las reglas de negocio.

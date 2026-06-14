@@ -1,4 +1,10 @@
 -- =============================================================================
+-- *** NO EJECUTAR — BORRADOR HISTÓRICO ***
+-- Este archivo es una versión anterior absorbida por complemento_script_final.sql.
+-- MJV_sp_cerrar_discusion_reunion vive en complemento_script_final.sql y luego
+-- es reemplazado por brechas_admin_reuniones.sql (añade BRECHA B: check realizada='N').
+-- Ejecutar este archivo después del complemento eliminaría la corrección de la BRECHA B.
+-- =============================================================================
 -- ADMINISTRACIÓN DE REUNIONES - ACTIVIDAD 3
 -- Cierre de discusión de una reunión con conclusiones y valoración final.
 -- =============================================================================

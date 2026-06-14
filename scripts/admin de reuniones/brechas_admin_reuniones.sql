@@ -1,0 +1,19 @@
+-- =============================================================================
+-- ARCHIVO OBSOLETO — NO EJECUTAR
+-- =============================================================================
+-- Todo el contenido de este archivo fue integrado en complemento_script_final.sql.
+--
+-- Orden de ejecución desde cero:
+--   1. script_final.sql              ← DDL + INSERTs + triggers base
+--   2. complemento_script_final.sql  ← SPs, funciones, vistas y brechas A/B/C/D
+--
+-- Las brechas integradas en complemento_script_final.sql son:
+--   BRECHA A — MJV_tgr_validar_moderador      (mismo moderador por libro/grupo)
+--   BRECHA B — MJV_sp_cerrar_discusion_reunion (bloquear cierre sin asistencia)
+--   BRECHA C — MJV_fn_hora_fin_valida          (duración máxima 2 horas)
+--              MJV_tgr_validar_duracion_grupo
+--   BRECHA D — MJV_vw_reuniones_calendario_activo
+--              MJV_vw_inasistencias_bimestre
+--              MJV_vw_estado_discusiones
+--              MJV_vw_moderadores_activos
+-- =============================================================================

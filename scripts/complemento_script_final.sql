@@ -1,3 +1,26 @@
+-- =============================================================================
+-- PROYECTO: Sistema de Gestión de Clubes de Lectura
+-- ARCHIVO:  complemento_script_final.sql
+-- MOTOR:    Oracle 19c
+--
+-- ORDEN DE EJECUCIÓN:
+--   1. script_final.sql              ← DDL + INSERTs + triggers/funciones base
+--   2. complemento_script_final.sql  ← ESTE ARCHIVO (funciones, SPs, vistas)
+--
+-- CONTIENE:
+--   • Funciones auxiliares de lookup (isbn, club, representante)
+--   • Triggers de membresía y pago
+--   • Funciones de solvencia, veto, inasistencia
+--   • Vistas operativas (miembros, solvencia, retiros, ocupación)
+--   • SP de inscripción, pago, retiro de miembros
+--   • SP de agendar reunión, registrar asistencia, cerrar discusión
+--   • Trigger de retiro automático por inasistencia
+--   • BRECHA A — MJV_tgr_validar_moderador (mismo moderador por libro/grupo)
+--   • BRECHA B — MJV_sp_cerrar_discusion_reunion (bloquear cierre sin asistencia)
+--   • BRECHA C — MJV_fn_hora_fin_valida + MJV_tgr_validar_duracion_grupo
+--   • BRECHA D — 4 vistas operativas de administración de reuniones
+-- =============================================================================
+
 CREATE OR REPLACE FUNCTION MJV_fn_obtener_isbn_por_titulo (
     p_titulo IN VARCHAR2
 ) RETURN VARCHAR2 IS
@@ -675,7 +698,7 @@ BEGIN
     END;
 
     -- 5. Conversión y validación de monto mínimo
-    v_monto_usd := MJV_conversion_monetaria(pi_monto, pi_moneda, 'USD', pi_tasa);
+    v_monto_usd := MJV_conversion_monetaria(pi_monto, pi_moneda, pi_tasa);
 
     IF v_monto_usd < 100 THEN
         RAISE_APPLICATION_ERROR(
@@ -1157,6 +1180,10 @@ END MJV_tgr_retirar_por_inasistencia;
 
 -- Nota: el trigger se activa automáticamente cuando se inserta una inasistencia en MJV_inasistencia.
 
+-- =============================================================================
+-- ACTIVIDAD 3 — CIERRE DE DISCUSIÓN
+-- [BRECHA B incluida]: bloquea el cierre si la reunión no fue realizada aún.
+-- =============================================================================
 CREATE OR REPLACE PROCEDURE MJV_sp_cerrar_discusion_reunion (
     pi_id_club       IN NUMBER,
     pi_id_grupo      IN NUMBER,
@@ -1188,51 +1215,67 @@ BEGIN
     SELECT realizada, ultima
       INTO v_reunion_realizada, v_ultima_actual
       FROM MJV_calendario_reunion_mes
-     WHERE id_club = pi_id_club
+     WHERE id_club  = pi_id_club
        AND id_grupo = pi_id_grupo
-       AND fecha = TRUNC(pi_fecha_reunion)
-       AND isbn = TRIM(pi_isbn);
+       AND fecha    = TRUNC(pi_fecha_reunion)
+       AND isbn     = TRIM(pi_isbn);
 
     IF v_ultima_actual = 'S' THEN
         RAISE_APPLICATION_ERROR(
             -20082,
-            'Error: la reunión ya está cerrada como última discusión.'
+            'Error: la reunión del ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY')
+            || ' ya está cerrada como última discusión.'
+        );
+    END IF;
+
+    -- [BRECHA B] No se puede cerrar una reunión que nunca fue realizada.
+    -- realizada='N' significa que aún no se registró asistencia para esta fecha.
+    IF v_reunion_realizada = 'N' THEN
+        RAISE_APPLICATION_ERROR(
+            -20084,
+            'Error: no se puede cerrar la reunión del '
+            || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY')
+            || ' porque aún no se ha registrado asistencia (realizada=N). '
+            || 'Registre la asistencia antes de cerrar la discusión.'
         );
     END IF;
 
     UPDATE MJV_calendario_reunion_mes
        SET ultima = 'N'
-     WHERE id_club = pi_id_club
+     WHERE id_club  = pi_id_club
        AND id_grupo = pi_id_grupo
-       AND isbn = TRIM(pi_isbn)
-       AND fecha != TRUNC(pi_fecha_reunion)
-       AND ultima = 'S';
+       AND isbn     = TRIM(pi_isbn)
+       AND fecha   != TRUNC(pi_fecha_reunion)
+       AND ultima   = 'S';
 
     UPDATE MJV_calendario_reunion_mes
-       SET realizada   = 'S',
-           ultima      = 'S',
+       SET realizada    = 'S',
+           ultima       = 'S',
            conclusiones = v_conclusiones_norm,
            valoracion   = pi_valoracion
-     WHERE id_club = pi_id_club
+     WHERE id_club  = pi_id_club
        AND id_grupo = pi_id_grupo
-       AND fecha = TRUNC(pi_fecha_reunion)
-       AND isbn = TRIM(pi_isbn);
+       AND fecha    = TRUNC(pi_fecha_reunion)
+       AND isbn     = TRIM(pi_isbn);
 
     COMMIT;
 
     DBMS_OUTPUT.PUT_LINE(
-        'Discusión cerrada: club ' || pi_id_club ||
-        ', grupo ' || pi_id_grupo ||
-        ', libro ' || TRIM(pi_isbn) ||
-        ', fecha ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY') ||
-        ', valoración ' || pi_valoracion
+        'Discusión cerrada: club ' || pi_id_club
+        || ', grupo '    || pi_id_grupo
+        || ', libro '    || TRIM(pi_isbn)
+        || ', fecha '    || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY')
+        || ', valoración ' || pi_valoracion
     );
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         ROLLBACK;
         RAISE_APPLICATION_ERROR(
             -20083,
-            'Error: no se encontró la reunión para cerrar.'
+            'Error: no se encontró la reunión para cerrar (club='
+            || pi_id_club || ', grupo=' || pi_id_grupo
+            || ', fecha=' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY')
+            || ', isbn=' || pi_isbn || ').'
         );
     WHEN OTHERS THEN
         ROLLBACK;
@@ -1261,3 +1304,330 @@ BEGIN
     );
 END;
 */
+
+
+-- =============================================================================
+-- BRECHA A — MJV_tgr_validar_moderador
+-- Extiende el trigger existente en script_final.sql añadiendo la regla de que
+-- el moderador debe ser el MISMO para todas las reuniones de un libro en un grupo.
+-- También mantiene: miembro activo del club (R8-a), adulto para niños (R8-b),
+-- y no puede moderar otro grupo con libro activo simultáneamente (R3/BRECHA4).
+-- =============================================================================
+CREATE OR REPLACE TRIGGER MJV_tgr_validar_moderador
+BEFORE INSERT OR UPDATE ON MJV_calendario_reunion_mes
+FOR EACH ROW
+DECLARE
+    v_es_miembro_club  NUMBER;
+    v_tipo_grupo       VARCHAR2(10);
+    v_es_adulto        NUMBER;
+    v_mod_ocupado      NUMBER;
+    v_mod_previo       NUMBER;
+BEGIN
+    -- [R8-a] El moderador debe ser miembro activo del mismo club
+    SELECT COUNT(*)
+      INTO v_es_miembro_club
+      FROM MJV_g_lec
+     WHERE id_lector = :NEW.mod_id_lector
+       AND id_club   = :NEW.id_club
+       AND fec_f     IS NULL;
+
+    IF v_es_miembro_club = 0 THEN
+        RAISE_APPLICATION_ERROR(
+            -20030,
+            'El moderador (ID: ' || :NEW.mod_id_lector
+            || ') debe ser un miembro activo del mismo club.'
+        );
+    END IF;
+
+    -- [R8-b] Para grupos de niños el moderador debe pertenecer a un grupo de adultos
+    SELECT tipo_grupo
+      INTO v_tipo_grupo
+      FROM MJV_grupo
+     WHERE id_grupo = :NEW.id_grupo
+       AND id_club  = :NEW.id_club;
+
+    IF v_tipo_grupo = 'niños' THEN
+        SELECT COUNT(*)
+          INTO v_es_adulto
+          FROM MJV_g_lec gl
+          JOIN MJV_grupo g ON gl.id_grupo = g.id_grupo AND gl.id_club = g.id_club
+         WHERE gl.id_lector  = :NEW.mod_id_lector
+           AND gl.id_club    = :NEW.id_club
+           AND gl.fec_f      IS NULL
+           AND g.tipo_grupo  = 'adultos';
+
+        IF v_es_adulto = 0 THEN
+            RAISE_APPLICATION_ERROR(
+                -20031,
+                'Para reuniones de niños el moderador debe pertenecer a un grupo '
+                || 'de adultos del mismo club.'
+            );
+        END IF;
+    END IF;
+
+    -- [BRECHA A] El moderador debe ser el MISMO para todas las reuniones del
+    --            mismo libro dentro del grupo.
+    BEGIN
+        SELECT mod_id_lector
+          INTO v_mod_previo
+          FROM MJV_calendario_reunion_mes
+         WHERE id_club  = :NEW.id_club
+           AND id_grupo = :NEW.id_grupo
+           AND isbn     = :NEW.isbn
+           AND ROWNUM   = 1;
+
+        IF v_mod_previo != :NEW.mod_id_lector THEN
+            RAISE_APPLICATION_ERROR(
+                -20068,
+                'El libro "' || :NEW.isbn
+                || '" ya tiene asignado al moderador ID ' || v_mod_previo
+                || ' para el grupo ' || :NEW.id_grupo
+                || '. El moderador debe ser el mismo en todas las reuniones del libro.'
+            );
+        END IF;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            NULL;  -- Primera reunión de este libro en este grupo: válido
+    END;
+
+    -- [R3] Un moderador no puede moderar simultáneamente otro grupo
+    --      con un libro en discusión activa (realizada='S' y ultima='N').
+    SELECT COUNT(*)
+      INTO v_mod_ocupado
+      FROM MJV_calendario_reunion_mes crm
+     WHERE crm.mod_id_lector = :NEW.mod_id_lector
+       AND crm.id_club        = :NEW.id_club
+       AND crm.realizada      = 'S'
+       AND crm.ultima         = 'N'
+       AND NOT (crm.id_grupo = :NEW.id_grupo AND crm.isbn = :NEW.isbn);
+
+    IF v_mod_ocupado > 0 THEN
+        RAISE_APPLICATION_ERROR(
+            -20052,
+            'El moderador (ID: ' || :NEW.mod_id_lector
+            || ') ya está moderando activamente la discusión de otro libro en otro grupo. '
+            || 'Solo puede tomar una nueva moderación cuando finalice la discusión actual.'
+        );
+    END IF;
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(
+            -20032,
+            'No se encontró información del grupo o club asociado a la reunión.'
+        );
+END MJV_tgr_validar_moderador;
+/
+
+
+-- =============================================================================
+-- BRECHA C — Duración máxima de 2 horas
+-- MJV_tgr_hora_grupo_ninos (script_final.sql) ya cubre niños (inicio ≤ 17:00).
+-- Esta función y trigger cubren adultos/jóvenes (inicio ≤ 19:00, fin ≤ 21:00).
+-- =============================================================================
+CREATE OR REPLACE FUNCTION MJV_fn_hora_fin_valida (
+    p_hora_inicio    IN DATE,
+    p_tipo_grupo     IN VARCHAR2,
+    p_dur_max_horas  IN NUMBER DEFAULT 2
+) RETURN NUMBER  -- 1 = válida, 0 = excede límite
+IS
+    v_hora_fin   DATE;
+    v_limite_fin DATE;
+BEGIN
+    v_hora_fin := p_hora_inicio + (p_dur_max_horas / 24);
+
+    IF LOWER(TRIM(p_tipo_grupo)) = 'niños' THEN
+        v_limite_fin := TRUNC(p_hora_inicio) + (19/24);
+    ELSE
+        v_limite_fin := TRUNC(p_hora_inicio) + (21/24);
+    END IF;
+
+    RETURN CASE WHEN v_hora_fin > v_limite_fin THEN 0 ELSE 1 END;
+END MJV_fn_hora_fin_valida;
+/
+
+CREATE OR REPLACE TRIGGER MJV_tgr_validar_duracion_grupo
+BEFORE INSERT OR UPDATE OF hora_reunion, tipo_grupo ON MJV_grupo
+FOR EACH ROW
+DECLARE
+    v_valida NUMBER;
+BEGIN
+    v_valida := MJV_fn_hora_fin_valida(:NEW.hora_reunion, :NEW.tipo_grupo);
+
+    IF v_valida = 0 THEN
+        IF LOWER(TRIM(:NEW.tipo_grupo)) = 'niños' THEN
+            RAISE_APPLICATION_ERROR(
+                -20069,
+                'La hora de inicio ' || TO_CHAR(:NEW.hora_reunion, 'HH24:MI')
+                || ' con duración máxima de 2 horas excedería las 19:00 '
+                || 'para un grupo de niños. Ajuste la hora de inicio (máx 17:00).'
+            );
+        ELSE
+            RAISE_APPLICATION_ERROR(
+                -20069,
+                'La hora de inicio ' || TO_CHAR(:NEW.hora_reunion, 'HH24:MI')
+                || ' con duración máxima de 2 horas excedería las 21:00. '
+                || 'Ajuste la hora de inicio (máx 19:00).'
+            );
+        END IF;
+    END IF;
+END MJV_tgr_validar_duracion_grupo;
+/
+
+
+-- =============================================================================
+-- BRECHA D — Vistas operativas de Administración de Reuniones
+-- =============================================================================
+
+-- Vista D-1: Reuniones abiertas con moderador y estado
+CREATE OR REPLACE VIEW MJV_vw_reuniones_calendario_activo AS
+SELECT
+    c.id_club,
+    c.nombre_club,
+    g.id_grupo,
+    g.tipo_grupo,
+    crm.fecha                                    AS fecha_reunion,
+    TO_CHAR(g.hora_reunion, 'HH24:MI')           AS hora_inicio,
+    TO_CHAR(g.hora_reunion + (2/24), 'HH24:MI')  AS hora_fin_estimada,
+    lb.isbn,
+    lb.titulo                                    AS titulo_libro,
+    crm.realizada,
+    crm.ultima,
+    crm.mod_id_lector                            AS id_moderador,
+    l.p_nombre || ' ' || l.p_apellido
+        || ' ' || NVL(l.s_apellido, '')          AS nombre_moderador,
+    l.doc_identidad                              AS cedula_moderador,
+    gmod.tipo_grupo                              AS tipo_grupo_moderador
+FROM
+    MJV_calendario_reunion_mes crm
+    JOIN MJV_club   c    ON c.id_club   = crm.id_club
+    JOIN MJV_grupo  g    ON g.id_grupo  = crm.id_grupo  AND g.id_club  = crm.id_club
+    JOIN MJV_libro  lb   ON lb.isbn     = crm.isbn
+    JOIN MJV_lector l    ON l.id_lector = crm.mod_id_lector
+    LEFT JOIN MJV_g_lec gl_mod ON gl_mod.id_lector = crm.mod_id_lector
+                               AND gl_mod.id_club   = crm.id_club
+                               AND gl_mod.fec_f     IS NULL
+    LEFT JOIN MJV_grupo gmod   ON gmod.id_grupo     = gl_mod.id_grupo
+                               AND gmod.id_club     = crm.id_club
+WHERE
+    crm.ultima = 'N'
+ORDER BY c.nombre_club, g.id_grupo, crm.fecha;
+
+
+-- Vista D-2: Inasistencias por bimestre — identifica miembros en riesgo de retiro (>30%)
+CREATE OR REPLACE VIEW MJV_vw_inasistencias_bimestre AS
+SELECT
+    i.id_lector,
+    l.p_nombre || ' ' || l.p_apellido
+        || ' ' || NVL(l.s_apellido, '')      AS nombre_completo,
+    l.doc_identidad,
+    i.id_club,
+    c.nombre_club,
+    i.id_grupo,
+    g.tipo_grupo,
+    EXTRACT(YEAR  FROM crm.fecha)             AS anio,
+    CEIL(EXTRACT(MONTH FROM crm.fecha) / 2)   AS bimestre,
+    COUNT(DISTINCT crm.fecha)                 AS reuniones_realizadas,
+    COUNT(i.fecha_reunion)                    AS total_inasistencias,
+    ROUND(
+        (COUNT(i.fecha_reunion) / NULLIF(COUNT(DISTINCT crm.fecha), 0)) * 100, 2
+    )                                         AS pct_inasistencia,
+    CASE
+        WHEN ROUND(
+            (COUNT(i.fecha_reunion) / NULLIF(COUNT(DISTINCT crm.fecha), 0)) * 100, 2
+        ) > 30 THEN 'EN RIESGO'
+        ELSE 'OK'
+    END                                       AS estatus_riesgo
+FROM
+    MJV_inasistencia i
+    JOIN MJV_calendario_reunion_mes crm
+      ON crm.id_grupo = i.id_grupo AND crm.id_club = i.id_club
+     AND crm.fecha    = i.fecha_reunion AND crm.isbn = i.isbn
+    JOIN MJV_lector l ON l.id_lector = i.id_lector
+    JOIN MJV_club   c ON c.id_club   = i.id_club
+    JOIN MJV_grupo  g ON g.id_grupo  = i.id_grupo AND g.id_club = i.id_club
+WHERE crm.realizada = 'S'
+GROUP BY
+    i.id_lector, l.p_nombre, l.p_apellido, l.s_apellido, l.doc_identidad,
+    i.id_club, c.nombre_club, i.id_grupo, g.tipo_grupo,
+    EXTRACT(YEAR FROM crm.fecha), CEIL(EXTRACT(MONTH FROM crm.fecha) / 2)
+ORDER BY pct_inasistencia DESC, c.nombre_club, i.id_lector;
+
+
+-- Vista D-3: Estado de discusiones por grupo y libro
+CREATE OR REPLACE VIEW MJV_vw_estado_discusiones AS
+SELECT
+    c.id_club,
+    c.nombre_club,
+    g.id_grupo,
+    g.tipo_grupo,
+    lb.isbn,
+    lb.titulo,
+    COUNT(crm.fecha)                                              AS total_reuniones_agendadas,
+    SUM(CASE crm.realizada WHEN 'S' THEN 1 ELSE 0 END)           AS reuniones_realizadas,
+    SUM(CASE crm.realizada WHEN 'N' THEN 1 ELSE 0 END)           AS reuniones_pendientes,
+    MAX(CASE crm.ultima WHEN 'S' THEN 'CERRADA' ELSE 'ACTIVA' END) AS estado_discusion,
+    MAX(CASE crm.ultima WHEN 'S' THEN crm.valoracion   ELSE NULL END) AS valoracion_final,
+    MAX(CASE crm.ultima WHEN 'S' THEN crm.conclusiones ELSE NULL END) AS conclusiones,
+    MAX(CASE crm.ultima WHEN 'S' THEN crm.fecha        ELSE NULL END) AS fecha_cierre,
+    MAX(crm.mod_id_lector)                                        AS id_moderador,
+    MAX(l.p_nombre || ' ' || l.p_apellido)                        AS nombre_moderador,
+    MIN(crm.fecha)                                                AS primera_reunion,
+    MAX(crm.fecha)                                                AS ultima_reunion
+FROM
+    MJV_calendario_reunion_mes crm
+    JOIN MJV_club   c  ON c.id_club  = crm.id_club
+    JOIN MJV_grupo  g  ON g.id_grupo = crm.id_grupo AND g.id_club = crm.id_club
+    JOIN MJV_libro  lb ON lb.isbn    = crm.isbn
+    LEFT JOIN MJV_lector l ON l.id_lector = crm.mod_id_lector
+GROUP BY c.id_club, c.nombre_club, g.id_grupo, g.tipo_grupo, lb.isbn, lb.titulo
+ORDER BY c.nombre_club, g.id_grupo, estado_discusion DESC;
+
+
+-- Vista D-4: Moderadores con discusiones activas en curso
+CREATE OR REPLACE VIEW MJV_vw_moderadores_activos AS
+SELECT
+    l.id_lector                                  AS id_moderador,
+    l.p_nombre || ' ' || l.p_apellido
+        || ' ' || NVL(l.s_apellido, '')          AS nombre_moderador,
+    l.doc_identidad,
+    crm.id_club,
+    c.nombre_club,
+    crm.id_grupo,
+    g.tipo_grupo,
+    crm.isbn,
+    lb.titulo,
+    COUNT(crm.fecha)                             AS reuniones_agendadas,
+    SUM(CASE crm.realizada WHEN 'S' THEN 1 ELSE 0 END) AS reuniones_realizadas,
+    MIN(crm.fecha)                               AS primera_reunion,
+    MAX(crm.fecha)                               AS proxima_o_ultima_reunion,
+    CASE WHEN MAX(crm.ultima) = 'S' THEN 'CERRADA' ELSE 'EN CURSO' END AS estado
+FROM
+    MJV_calendario_reunion_mes crm
+    JOIN MJV_lector l  ON l.id_lector = crm.mod_id_lector
+    JOIN MJV_club   c  ON c.id_club   = crm.id_club
+    JOIN MJV_grupo  g  ON g.id_grupo  = crm.id_grupo AND g.id_club = crm.id_club
+    JOIN MJV_libro  lb ON lb.isbn     = crm.isbn
+WHERE crm.ultima = 'N'
+GROUP BY
+    l.id_lector, l.p_nombre, l.p_apellido, l.s_apellido, l.doc_identidad,
+    crm.id_club, c.nombre_club, crm.id_grupo, g.tipo_grupo, crm.isbn, lb.titulo
+ORDER BY c.nombre_club, nombre_moderador;
+
+
+-- =============================================================================
+-- VERIFICACIÓN: confirmar que todos los objetos compilaron correctamente
+-- =============================================================================
+-- SELECT object_name, object_type, status
+--   FROM user_objects
+--  WHERE object_name IN (
+--        'MJV_TGR_VALIDAR_MODERADOR',
+--        'MJV_SP_CERRAR_DISCUSION_REUNION',
+--        'MJV_FN_HORA_FIN_VALIDA',
+--        'MJV_TGR_VALIDAR_DURACION_GRUPO',
+--        'MJV_VW_REUNIONES_CALENDARIO_ACTIVO',
+--        'MJV_VW_INASISTENCIAS_BIMESTRE',
+--        'MJV_VW_ESTADO_DISCUSIONES',
+--        'MJV_VW_MODERADORES_ACTIVOS'
+--  )
+--  ORDER BY object_type, object_name;
