@@ -1,0 +1,235 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="R03_FichaLibro" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="c3000003-0003-4003-c003-300000000003">
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Clubes de Lectura"/>
+	<parameter name="P_ISBN" class="java.lang.String">
+		<defaultValueExpression><![CDATA["978-0-06-112008-4"]]></defaultValueExpression>
+	</parameter>
+	<query language="SQL"><![CDATA[
+SELECT
+    fl.isbn,
+    fl.titulo,
+    fl.tipo_narrativa,
+    fl.sinopsis,
+    fl.genero,
+    fl.primera_edicion,
+    fl.total_paginas,
+    fl.pais_origen,
+    fl.autores,
+    fl.valoracion_global,
+    ag.id_club,
+    ag.nombre_club,
+    ag.pais_club,
+    ag.ciudad_club,
+    ag.id_grupo,
+    ag.tipo_grupo,
+    ag.valoracion              AS valoracion_grupo,
+    ag.conclusiones,
+    TO_CHAR(ag.fecha_cierre, 'DD/MM/YYYY')  AS fecha_cierre,
+    ag.nombre_moderador
+FROM
+    MJV_vw_r3_ficha_libro            fl
+    LEFT JOIN MJV_vw_r3_analisis_por_grupo ag ON ag.isbn = fl.isbn
+WHERE
+    fl.isbn = $P{P_ISBN}
+ORDER BY
+    ag.valoracion DESC NULLS LAST,
+    ag.fecha_cierre DESC NULLS LAST
+    ]]></query>
+	<field name="ISBN" class="java.lang.String"/>
+	<field name="TITULO" class="java.lang.String"/>
+	<field name="TIPO_NARRATIVA" class="java.lang.String"/>
+	<field name="SINOPSIS" class="java.lang.String"/>
+	<field name="GENERO" class="java.lang.String"/>
+	<field name="PRIMERA_EDICION" class="java.math.BigDecimal"/>
+	<field name="TOTAL_PAGINAS" class="java.math.BigDecimal"/>
+	<field name="PAIS_ORIGEN" class="java.lang.String"/>
+	<field name="AUTORES" class="java.lang.String"/>
+	<field name="VALORACION_GLOBAL" class="java.math.BigDecimal"/>
+	<field name="ID_CLUB" class="java.math.BigDecimal"/>
+	<field name="NOMBRE_CLUB" class="java.lang.String"/>
+	<field name="PAIS_CLUB" class="java.lang.String"/>
+	<field name="CIUDAD_CLUB" class="java.lang.String"/>
+	<field name="ID_GRUPO" class="java.math.BigDecimal"/>
+	<field name="TIPO_GRUPO" class="java.lang.String"/>
+	<field name="VALORACION_GRUPO" class="java.math.BigDecimal"/>
+	<field name="CONCLUSIONES" class="java.lang.String"/>
+	<field name="FECHA_CIERRE" class="java.lang.String"/>
+	<field name="NOMBRE_MODERADOR" class="java.lang.String"/>
+	<group name="GROUP_LIBRO">
+		<expression><![CDATA[$F{ISBN}]]></expression>
+		<groupHeader>
+			<band height="228">
+				<element kind="rectangle" uuid="c3000003-0003-4003-c003-300000000010" x="0" y="0" width="555" height="36" forecolor="#2C3B2D" backcolor="#2C3B2D">
+					<pen lineWidth="0.0"/>
+				</element>
+				<element kind="textField" uuid="c3000003-0003-4003-c003-300000000011" x="8" y="4" width="539" height="28" forecolor="#C8A97A" fontSize="14.0" bold="true">
+					<expression><![CDATA[$F{TITULO}]]></expression>
+				</element>
+				<element kind="rectangle" uuid="c3000003-0003-4003-c003-300000000012" x="0" y="36" width="555" height="92" forecolor="#EFF5EE" backcolor="#EFF5EE">
+					<pen lineWidth="0.0"/>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000013" x="10" y="44" width="90" height="15" forecolor="#2C3B2D" fontSize="9.0" bold="true">
+					<text><![CDATA[ISBN:]]></text>
+				</element>
+				<element kind="textField" uuid="c3000003-0003-4003-c003-300000000014" x="105" y="44" width="180" height="15" fontSize="9.0">
+					<expression><![CDATA[$F{ISBN}]]></expression>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000015" x="295" y="44" width="90" height="15" forecolor="#2C3B2D" fontSize="9.0" bold="true">
+					<text><![CDATA[Tipo Narrativa:]]></text>
+				</element>
+				<element kind="textField" uuid="c3000003-0003-4003-c003-300000000016" x="390" y="44" width="156" height="15" fontSize="9.0" blankWhenNull="true">
+					<expression><![CDATA[$F{TIPO_NARRATIVA}]]></expression>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000017" x="10" y="61" width="90" height="15" forecolor="#2C3B2D" fontSize="9.0" bold="true">
+					<text><![CDATA[Autores:]]></text>
+				</element>
+				<element kind="textField" uuid="c3000003-0003-4003-c003-300000000018" x="105" y="61" width="440" height="15" fontSize="9.0" blankWhenNull="true">
+					<expression><![CDATA[$F{AUTORES}]]></expression>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000019" x="10" y="78" width="90" height="15" forecolor="#2C3B2D" fontSize="9.0" bold="true">
+					<text><![CDATA[Género:]]></text>
+				</element>
+				<element kind="textField" uuid="c3000003-0003-4003-c003-300000000020" x="105" y="78" width="180" height="15" fontSize="9.0" blankWhenNull="true">
+					<expression><![CDATA[$F{GENERO}]]></expression>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000021" x="295" y="78" width="90" height="15" forecolor="#2C3B2D" fontSize="9.0" bold="true">
+					<text><![CDATA[1.ª Edición:]]></text>
+				</element>
+				<element kind="textField" uuid="c3000003-0003-4003-c003-300000000022" x="390" y="78" width="80" height="15" fontSize="9.0" blankWhenNull="true">
+					<expression><![CDATA[$F{PRIMERA_EDICION} == null ? "—" : $F{PRIMERA_EDICION}.intValue() + ""]]></expression>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000023" x="10" y="95" width="90" height="15" forecolor="#2C3B2D" fontSize="9.0" bold="true">
+					<text><![CDATA[Págs. / País:]]></text>
+				</element>
+				<element kind="textField" uuid="c3000003-0003-4003-c003-300000000024" x="105" y="95" width="280" height="15" fontSize="9.0">
+					<expression><![CDATA[($F{TOTAL_PAGINAS} == null ? "—" : $F{TOTAL_PAGINAS}.intValue() + " páginas") + "  ·  " + ($F{PAIS_ORIGEN} == null ? "—" : $F{PAIS_ORIGEN})]]></expression>
+				</element>
+				<element kind="rectangle" uuid="c3000003-0003-4003-c003-300000000025" x="390" y="95" width="156" height="26" forecolor="#2C3B2D" backcolor="#2C3B2D">
+					<pen lineWidth="0.0"/>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000026" x="395" y="98" width="75" height="18" forecolor="#C8A97A" fontSize="9.0" bold="true">
+					<text><![CDATA[Val. Global:]]></text>
+				</element>
+				<element kind="textField" uuid="c3000003-0003-4003-c003-300000000027" x="472" y="98" width="68" height="18" forecolor="#C8A97A" fontSize="11.0" bold="true" hTextAlign="Center">
+					<expression><![CDATA[$F{VALORACION_GLOBAL} == null ? "N/D" : $F{VALORACION_GLOBAL}.toString() + " / 5"]]></expression>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000028" x="10" y="132" width="90" height="15" forecolor="#2C3B2D" fontSize="9.0" bold="true">
+					<text><![CDATA[Sinopsis:]]></text>
+				</element>
+				<element kind="textField" uuid="c3000003-0003-4003-c003-300000000029" x="10" y="148" width="535" height="40" fontSize="8.5" blankWhenNull="true">
+					<expression><![CDATA[$F{SINOPSIS}]]></expression>
+				</element>
+				<element kind="line" uuid="c3000003-0003-4003-c003-300000000030" x="0" y="190" width="555" height="1" forecolor="#4A7C59">
+					<pen lineWidth="1.0"/>
+				</element>
+				<element kind="rectangle" uuid="c3000003-0003-4003-c003-300000000031" x="0" y="192" width="555" height="20" forecolor="#4A7C59" backcolor="#4A7C59">
+					<pen lineWidth="0.0"/>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000032" x="8" y="196" width="170" height="13" forecolor="#FFFFFF" fontSize="8.0" bold="true">
+					<text><![CDATA[Club · Ciudad · País]]></text>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000033" x="182" y="196" width="70" height="13" forecolor="#FFFFFF" fontSize="8.0" bold="true">
+					<text><![CDATA[Tipo Grupo]]></text>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000034" x="255" y="196" width="55" height="13" forecolor="#FFFFFF" fontSize="8.0" bold="true" hTextAlign="Center">
+					<text><![CDATA[Val.]]></text>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000035" x="313" y="196" width="80" height="13" forecolor="#FFFFFF" fontSize="8.0" bold="true">
+					<text><![CDATA[F. Cierre]]></text>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000036" x="396" y="196" width="150" height="13" forecolor="#FFFFFF" fontSize="8.0" bold="true">
+					<text><![CDATA[Moderador]]></text>
+				</element>
+				<element kind="line" uuid="c3000003-0003-4003-c003-300000000037" x="0" y="212" width="555" height="1" forecolor="#2C3B2D">
+					<pen lineWidth="1.2"/>
+				</element>
+				<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000038" x="8" y="215" width="400" height="12" forecolor="#4A7C59" fontSize="8.5" bold="true" italic="true">
+					<text><![CDATA[Análisis por Grupo y Club]]></text>
+				</element>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="10">
+				<element kind="line" uuid="c3000003-0003-4003-c003-300000000039" x="0" y="6" width="555" height="1" forecolor="#4A7C59">
+					<pen lineWidth="0.8"/>
+				</element>
+			</band>
+		</groupFooter>
+	</group>
+	<title height="72">
+		<element kind="rectangle" uuid="c3000003-0003-4003-c003-300000000050" x="0" y="0" width="555" height="62" forecolor="#2C3B2D" backcolor="#2C3B2D">
+			<pen lineWidth="0.0"/>
+		</element>
+		<element kind="line" uuid="c3000003-0003-4003-c003-300000000051" x="0" y="62" width="555" height="1" forecolor="#C8A97A">
+			<pen lineWidth="2.0"/>
+		</element>
+		<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000052" x="0" y="8" width="555" height="32" forecolor="#FFFFFF" fontSize="20.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[FICHA DE LIBRO]]></text>
+		</element>
+		<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000053" x="0" y="42" width="555" height="16" forecolor="#C8A97A" fontSize="9.0" hTextAlign="Center">
+			<text><![CDATA[Sistema de Gestión · Clubes de Lectura · Grupo 4 MJV]]></text>
+		</element>
+	</title>
+	<pageHeader height="8"/>
+	<columnHeader/>
+	<detail>
+		<band height="38">
+			<element kind="rectangle" uuid="c3000003-0003-4003-c003-300000000060" x="0" y="0" width="555" height="38" forecolor="#EFF5EE" backcolor="#EFF5EE">
+				<printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 0]]></printWhenExpression>
+				<pen lineWidth="0.0"/>
+			</element>
+			<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000061" x="22" y="12" width="450" height="13" forecolor="#7A7A6E" fontSize="8.0" italic="true">
+				<printWhenExpression><![CDATA[$F{NOMBRE_CLUB} == null]]></printWhenExpression>
+				<text><![CDATA[Sin análisis registrados para este libro]]></text>
+			</element>
+			<element kind="textField" uuid="c3000003-0003-4003-c003-300000000062" x="8" y="4" width="170" height="13" fontSize="8.0" blankWhenNull="true">
+				<printWhenExpression><![CDATA[$F{NOMBRE_CLUB} != null]]></printWhenExpression>
+				<expression><![CDATA[$F{NOMBRE_CLUB} + " / " + $F{CIUDAD_CLUB} + ", " + $F{PAIS_CLUB}]]></expression>
+			</element>
+			<element kind="textField" uuid="c3000003-0003-4003-c003-300000000063" x="182" y="4" width="70" height="13" fontSize="8.0" blankWhenNull="true">
+				<printWhenExpression><![CDATA[$F{NOMBRE_CLUB} != null]]></printWhenExpression>
+				<expression><![CDATA[$F{TIPO_GRUPO}]]></expression>
+			</element>
+			<element kind="textField" uuid="c3000003-0003-4003-c003-300000000064" x="255" y="4" width="55" height="13" fontSize="8.0" blankWhenNull="true" hTextAlign="Center">
+				<printWhenExpression><![CDATA[$F{NOMBRE_CLUB} != null]]></printWhenExpression>
+				<expression><![CDATA[$F{VALORACION_GRUPO} == null ? "—" : $F{VALORACION_GRUPO}.intValue() + " / 5"]]></expression>
+			</element>
+			<element kind="textField" uuid="c3000003-0003-4003-c003-300000000065" x="313" y="4" width="80" height="13" fontSize="8.0" blankWhenNull="true">
+				<printWhenExpression><![CDATA[$F{NOMBRE_CLUB} != null]]></printWhenExpression>
+				<expression><![CDATA[$F{FECHA_CIERRE}]]></expression>
+			</element>
+			<element kind="textField" uuid="c3000003-0003-4003-c003-300000000066" x="396" y="4" width="150" height="13" fontSize="7.5" blankWhenNull="true">
+				<printWhenExpression><![CDATA[$F{NOMBRE_CLUB} != null]]></printWhenExpression>
+				<expression><![CDATA[$F{NOMBRE_MODERADOR}]]></expression>
+			</element>
+			<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000067" x="8" y="19" width="55" height="12" forecolor="#4A7C59" fontSize="7.5" bold="true" italic="true">
+				<printWhenExpression><![CDATA[$F{CONCLUSIONES} != null]]></printWhenExpression>
+				<text><![CDATA[Conclusiones:]]></text>
+			</element>
+			<element kind="textField" uuid="c3000003-0003-4003-c003-300000000068" x="66" y="19" width="480" height="12" forecolor="#3A3A2E" fontSize="7.5" blankWhenNull="true" italic="true">
+				<printWhenExpression><![CDATA[$F{CONCLUSIONES} != null]]></printWhenExpression>
+				<expression><![CDATA[$F{CONCLUSIONES}]]></expression>
+			</element>
+			<element kind="line" uuid="c3000003-0003-4003-c003-300000000069" x="0" y="37" width="555" height="1" forecolor="#D8E8D8">
+				<printWhenExpression><![CDATA[$F{NOMBRE_CLUB} != null]]></printWhenExpression>
+			</element>
+		</band>
+	</detail>
+	<columnFooter/>
+	<pageFooter height="28">
+		<element kind="line" uuid="c3000003-0003-4003-c003-300000000070" x="0" y="2" width="555" height="1" forecolor="#4A7C59">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="c3000003-0003-4003-c003-300000000071" x="0" y="8" width="330" height="14" forecolor="#5C5C50" fontSize="7.5">
+			<text><![CDATA[Clubes de Lectura · NRC 25758 · Sistema de Gestión MJV]]></text>
+		</element>
+		<element kind="textField" uuid="c3000003-0003-4003-c003-300000000072" x="420" y="8" width="65" height="14" forecolor="#5C5C50" fontSize="7.5" hTextAlign="Right">
+			<expression><![CDATA["Pág. " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="c3000003-0003-4003-c003-300000000073" x="485" y="8" width="65" height="14" forecolor="#5C5C50" fontSize="7.5" evaluationTime="Report">
+			<expression><![CDATA[" de " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+	<summary/>
+</jasperReport>
