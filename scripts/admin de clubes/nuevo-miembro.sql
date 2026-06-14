@@ -13,7 +13,7 @@ CREATE OR REPLACE PROCEDURE MJV_sp_inscribir_miembro (
     pi_titulo_pref1    IN VARCHAR2,
     pi_titulo_pref2    IN VARCHAR2,
     pi_titulo_pref3    IN VARCHAR2,
-    pi_doc_rep         IN VARCHAR2 DEFAULT NULL,
+    pi_id_rep          IN NUMBER DEFAULT NULL,
     pi_tipo_rep        IN VARCHAR2 DEFAULT NULL
 ) IS
     v_id_lector     NUMBER;
@@ -25,7 +25,6 @@ CREATE OR REPLACE PROCEDURE MJV_sp_inscribir_miembro (
     v_isbn1         VARCHAR2(20);
     v_isbn2         VARCHAR2(20);
     v_isbn3         VARCHAR2(20);
-    v_id_rep        NUMBER := NULL;
     v_id_rep_lector NUMBER := NULL;
     v_tiene_deuda   NUMBER;
     v_vetado        NUMBER;
@@ -44,21 +43,7 @@ BEGIN
     v_isbn2 := MJV_fn_obtener_isbn_por_titulo(pi_titulo_pref2);
     v_isbn3 := MJV_fn_obtener_isbn_por_titulo(pi_titulo_pref3);
 
-    -- 3. Lógica de representante
-    IF pi_doc_rep IS NOT NULL AND pi_tipo_rep IS NOT NULL THEN
-        IF UPPER(TRIM(pi_tipo_rep)) = 'LECTOR' THEN
-            v_id_rep_lector := MJV_fn_obtener_id_rep_por_doc(pi_doc_rep, pi_tipo_rep);
-        ELSIF UPPER(TRIM(pi_tipo_rep)) = 'EXTERNO' THEN
-            v_id_rep := MJV_fn_obtener_id_rep_por_doc(pi_doc_rep, pi_tipo_rep);
-        ELSE
-            RAISE_APPLICATION_ERROR(
-                -20012,
-                'Error: El tipo de representante debe ser LECTOR o EXTERNO.'
-            );
-        END IF;
-    END IF;
-
-    -- 4. Insertar lector (dispara MJV_tgr_validar_edad)
+    -- 3. Insertar lector (dispara MJV_tgr_validar_edad)
     INSERT INTO MJV_lector (
         p_nombre, p_apellido, s_apellido, doc_identidad, telefono,
         email, genero, fecha_nac, id_pais_nac, s_nombre,
@@ -66,11 +51,12 @@ BEGIN
     ) VALUES (
         pi_p_nombre, pi_p_apellido, pi_s_apellido, pi_doc_identidad, pi_telefono,
         pi_email, pi_genero, pi_fecha_nac, v_id_pais_nac, pi_s_nombre,
-        v_id_rep, v_id_rep_lector
+        CASE WHEN UPPER(TRIM(pi_tipo_rep)) = 'EXTERNO' THEN pi_id_rep ELSE NULL END, 
+        CASE WHEN UPPER(TRIM(pi_tipo_rep)) = 'LECTOR' THEN pi_id_rep ELSE NULL END
     )
     RETURNING id_lector INTO v_id_lector;
 
-    -- 5. Calcular edad
+    -- 4. Calcular edad
     v_age := MJV_edad_miembro(v_id_lector);
 
     -- [BRECHA 1] Bloqueo por deudas históricas en cualquier club anterior
@@ -169,7 +155,7 @@ DECLARE
     v_pref1    VARCHAR2(200) := '&titulo_libro_preferido_1';
     v_pref2    VARCHAR2(200) := '&titulo_libro_preferido_2';
     v_pref3    VARCHAR2(200) := '&titulo_libro_preferido_3';
-    v_rep_doc  VARCHAR2(20)  := '&doc_representante_o_NULL'; 
+    v_rep_id   NUMBER        := &id_representante_o_NULL; 
     v_rep_tipo VARCHAR2(20)  := '&tipo_rep_LECTOR_o_EXTERNO_o_NULL'; 
 BEGIN
     MJV_sp_inscribir_miembro(
@@ -187,7 +173,7 @@ BEGIN
         pi_titulo_pref2    => v_pref2,
         pi_titulo_pref3    => v_pref3,
         pi_s_nombre        => v_s_nom,
-        pi_doc_rep         => v_rep_doc,   
+        pi_id_rep          => v_rep_id,   
         pi_tipo_rep        => v_rep_tipo   
     );
 END; */
