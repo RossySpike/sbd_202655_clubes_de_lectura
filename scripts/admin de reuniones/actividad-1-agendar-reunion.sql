@@ -1,14 +1,14 @@
 -- =============================================================================
--- ADMINISTRACIÓN DE REUNIONES - ACTIVIDAD 1
+-- ADMINISTRACIÓN DE REUNIONES - ACTIVIDAD 1 (CORREGIDO)
 -- Procedimiento para generar el calendario de reuniones mensuales y asignar
--- un moderador al evento.
+-- un moderador al evento con todas las reglas de negocio.
 -- =============================================================================
 CREATE OR REPLACE PROCEDURE MJV_sp_agendar_reunion_mes (
     pi_id_club        IN NUMBER,
     pi_id_grupo       IN NUMBER,
     pi_isbn           IN VARCHAR2,
     pi_fecha_reunion  IN DATE,
-    pi_hora_inicio    IN DATE,
+    pi_hora_inicio    IN DATE, -- Se recibe tipo DATE para extraer la hora de manera exacta
     pi_mod_id_lector  IN NUMBER
 ) IS
     v_tipo_grupo          VARCHAR2(10);
@@ -35,18 +35,18 @@ BEGIN
         );
     END IF;
 
-    -- 3. Validaciones de tiempo
+    -- 3. Validaciones de tiempo estrictas de la actividad
     IF v_tipo_grupo = 'niños' AND TO_CHAR(pi_hora_inicio, 'HH24:MI') > '17:00' THEN
         RAISE_APPLICATION_ERROR(
             -20061,
-            'Error: Las reuniones de niños deben iniciar a más tardar a las 17:00.'
+            'Error: Las reuniones de niños calculadas no pueden terminar después de las 7:00 pm (Máx inicio 17:00).'
         );
     END IF;
 
     IF TO_CHAR(pi_hora_inicio, 'HH24:MI') > '19:00' THEN
         RAISE_APPLICATION_ERROR(
             -20062,
-            'Error: Ninguna reunión puede iniciar después de las 19:00.'
+            'Error: Ninguna reunión en el sistema puede iniciar después de las 19:00.'
         );
     END IF;
 
@@ -76,11 +76,30 @@ BEGIN
         WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(
                 -20064,
-                'Error: El moderador con ID ' || pi_mod_id_lector || ' no es miembro activo del club.'
+                'Error: El moderador con ID ' || pi_mod_id_lector || ' no es miembro activo de este club.'
             );
     END;
 
-    -- 6. Validar disponibilidad horaria del moderador
+    -- [BRECHA SOLUCIONADA] 5b. Si el grupo es de niños, verificar que el moderador pertenezca a un grupo de adultos
+    IF v_tipo_grupo = 'niños' THEN
+        SELECT COUNT(*)
+          INTO v_mod_adulto_activo
+          FROM MJV_g_lec gl
+          JOIN MJV_grupo g ON gl.id_grupo = g.id_grupo AND gl.id_club = g.id_club
+         WHERE gl.id_lector = pi_mod_id_lector
+           AND gl.id_club   = pi_id_club
+           AND g.tipo_grupo = 'adultos'
+           AND gl.fec_f     IS NULL;
+
+        IF v_mod_adulto_activo = 0 THEN
+            RAISE_APPLICATION_ERROR(
+                -20031,
+                'Error de Negocio: Para reuniones de niños, el moderador debe pertenecer obligatoriamente a un grupo de adultos del mismo club.'
+            );
+        END IF;
+    END IF;
+
+    -- 6. Validar disponibilidad horaria del moderador (No puede estar en 2 grupos a la misma hora el mismo día)
     SELECT COUNT(*)
       INTO v_conflicto_horario
       FROM MJV_calendario_reunion_mes crm
@@ -89,16 +108,16 @@ BEGIN
        AND crm.id_club = pi_id_club
        AND crm.fecha = TRUNC(pi_fecha_reunion)
        AND TO_CHAR(g.hora_reunion, 'HH24:MI') = TO_CHAR(pi_hora_inicio, 'HH24:MI')
-       AND NOT (crm.id_grupo = pi_id_grupo AND crm.isbn = TRIM(pi_isbn) AND crm.fecha = TRUNC(pi_fecha_reunion));
+       AND NOT (crm.id_grupo = pi_id_grupo AND crm.isbn = TRIM(pi_isbn));
 
     IF v_conflicto_horario > 0 THEN
         RAISE_APPLICATION_ERROR(
             -20065,
-            'Error: El moderador ya tiene una reunión programada ese mismo día y hora.'
+            'Error: El moderador ya tiene una reunión asignada en otro grupo ese mismo día y hora.'
         );
     END IF;
 
-    -- 7. Validar que no exista la reunión repetida
+    -- 7. Validar que no exista la reunión exactamente repetida
     SELECT COUNT(*)
       INTO v_existe_reunion
       FROM MJV_calendario_reunion_mes
@@ -110,11 +129,11 @@ BEGIN
     IF v_existe_reunion > 0 THEN
         RAISE_APPLICATION_ERROR(
             -20066,
-            'Error: Ya existe una reunión programada para ese grupo, libro y fecha.'
+            'Error: Ya existe una reunión registrada para este mismo grupo, libro y fecha.'
         );
     END IF;
 
-    -- 8. Registrar reunión en el calendario
+    -- 8. Registrar reunión en el calendario mensual
     INSERT INTO MJV_calendario_reunion_mes (
         id_club, id_grupo, fecha, isbn,
         mod_id_lector, mod_fecha_i, mod_hist_fecha_i,
@@ -127,8 +146,7 @@ BEGIN
 
     COMMIT;
     DBMS_OUTPUT.PUT_LINE(
-        'Reunión agendada: club ' || pi_id_club || ', grupo ' || pi_id_grupo || ', libro ' || pi_isbn ||
-        ', fecha ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY') || ', moderador ' || pi_mod_id_lector
+        'Reunión agendada exitosamente para el club ' || pi_id_club || ', grupo ' || pi_id_grupo
     );
 EXCEPTION
     WHEN OTHERS THEN
@@ -136,26 +154,3 @@ EXCEPTION
         RAISE;
 END MJV_sp_agendar_reunion_mes;
 /
-
--- Ejemplo de ejecución:
-/*
-SET SERVEROUTPUT ON;
--- Nota: usar el ID numérico del lector para el moderador (id_lector), no su documento.
-DECLARE
-    v_id_club       NUMBER := &id_club;
-    v_id_grupo      NUMBER := &id_grupo;
-    v_isbn          VARCHAR2(20) := '&isbn_libro';
-    v_fecha         DATE := TO_DATE('&fecha_reunion_DD/MM/YYYY', 'DD/MM/YYYY');
-    v_hora_inicio   DATE := TO_DATE('&hora_inicio_HH24:MI', 'HH24:MI');
-    v_id_moderador  NUMBER := &id_moderador;
-BEGIN
-    MJV_sp_agendar_reunion_mes(
-        pi_id_club       => v_id_club,
-        pi_id_grupo      => v_id_grupo,
-        pi_isbn          => v_isbn,
-        pi_fecha_reunion => v_fecha,
-        pi_hora_inicio   => v_hora_inicio,
-        pi_mod_id_lector => v_id_moderador
-    );
-END;
-*/

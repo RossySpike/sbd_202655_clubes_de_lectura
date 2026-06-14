@@ -13,7 +13,9 @@ CREATE OR REPLACE PROCEDURE MJV_sp_cerrar_discusion_reunion (
     v_reunion_realizada CHAR(1);
     v_ultima_actual     CHAR(1);
     v_conclusiones_norm VARCHAR2(4000);
+    v_promedio_val      NUMBER;
 BEGIN
+    -- 1. NORMALIZACIÓN Y VALIDACIONES PREVIAS
     v_conclusiones_norm := TRIM(pi_conclusiones);
 
     IF v_conclusiones_norm IS NULL THEN
@@ -30,6 +32,7 @@ BEGIN
         );
     END IF;
 
+    -- 2. VERIFICACIÓN DE EXISTENCIA Y ESTADO DE LA REUNIÓN (Usa la PK compuesta de grupo + club)
     SELECT realizada, ultima
       INTO v_reunion_realizada, v_ultima_actual
       FROM MJV_calendario_reunion_mes
@@ -45,6 +48,7 @@ BEGIN
         );
     END IF;
 
+    -- 3. ACTUALIZACIÓN DE REUNIONES ANTERIORES
     UPDATE MJV_calendario_reunion_mes
        SET ultima = 'N'
      WHERE id_club = pi_id_club
@@ -53,6 +57,7 @@ BEGIN
        AND fecha != TRUNC(pi_fecha_reunion)
        AND ultima = 'S';
 
+    -- 4. CIERRE DE LA REUNIÓN ACTUAL
     UPDATE MJV_calendario_reunion_mes
        SET realizada   = 'S',
            ultima      = 'S',
@@ -63,47 +68,40 @@ BEGIN
        AND fecha = TRUNC(pi_fecha_reunion)
        AND isbn = TRIM(pi_isbn);
 
+    -- 5. CÁLCULO DEL PROMEDIO DE VALORACIÓN DEL LIBRO
+    SELECT NVL(AVG(valoracion), 0)
+      INTO v_promedio_val
+      FROM MJV_calendario_reunion_mes
+     WHERE isbn = TRIM(pi_isbn)
+       AND valoracion IS NOT NULL;
+
+    -- [NOTA DE LOGÍSTICA]
+    -- Al actualizar realizada = 'S' en el paso 4, el moderador asignado a esta 
+    -- reunión en 'MJV_calendario_reunion_mes' queda liberado automáticamente, 
+    -- ya que las validaciones de disponibilidad del Flujo 2.1 solo deberían 
+    -- considerar como "ocupados" a los moderadores con reuniones donde realizada = 'N'.
+
     COMMIT;
 
     DBMS_OUTPUT.PUT_LINE(
-        'Discusión cerrada: club ' || pi_id_club ||
-        ', grupo ' || pi_id_grupo ||
-        ', libro ' || TRIM(pi_isbn) ||
-        ', fecha ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY') ||
-        ', valoración ' || pi_valoracion
+        'Discusión cerrada exitosamente.'
     );
+    DBMS_OUTPUT.PUT_LINE(
+        'Club: ' || pi_id_club || ' | Grupo: ' || pi_id_grupo || ' | Libro: ' || TRIM(pi_isbn)
+    );
+    DBMS_OUTPUT.PUT_LINE(
+        'Valoración de esta sesión: ' || pi_valoracion || ' | Promedio acumulado del libro: ' || ROUND(v_promedio_val, 2)
+    );
+
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         ROLLBACK;
         RAISE_APPLICATION_ERROR(
             -20083,
-            'Error: no se encontró la reunión para cerrar.'
+            'Error: no se encontró la reunión con los datos especificados.'
         );
     WHEN OTHERS THEN
         ROLLBACK;
         RAISE;
 END MJV_sp_cerrar_discusion_reunion;
 /
-
--- Ejemplo de ejecución:
-/*
-SET SERVEROUTPUT ON;
-DECLARE
-    v_id_club       NUMBER := &id_club;
-    v_id_grupo      NUMBER := &id_grupo;
-    -- Nota: este procedimiento no solicita doc_identidad; usa id_club/id_grupo/fecha/isbn.
-    v_fecha         DATE := TO_DATE('&fecha_reunion_DD/MM/YYYY', 'DD/MM/YYYY');
-    v_isbn          VARCHAR2(20) := '&isbn_libro';
-    v_conclusiones  VARCHAR2(4000) := '&conclusiones';
-    v_valoracion    NUMBER := &valoracion_final;
-BEGIN
-    MJV_sp_cerrar_discusion_reunion(
-        pi_id_club       => v_id_club,
-        pi_id_grupo      => v_id_grupo,
-        pi_fecha_reunion => v_fecha,
-        pi_isbn          => v_isbn,
-        pi_conclusiones  => v_conclusiones,
-        pi_valoracion    => v_valoracion
-    );
-END;
-*/
