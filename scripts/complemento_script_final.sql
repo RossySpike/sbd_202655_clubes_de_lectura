@@ -852,3 +852,453 @@ BEGIN
     );
 END;
 */
+
+
+-- =============================================================================
+-- ADMINISTRACIÓN DE REUNIONES - FLUJO 2
+-- Objetos del flujo de reuniones agregados al complemento del script final.
+-- =============================================================================
+
+CREATE OR REPLACE PROCEDURE MJV_sp_agendar_reunion_mes (
+    pi_id_club        IN NUMBER,
+    pi_id_grupo       IN NUMBER,
+    pi_isbn           IN VARCHAR2,
+    pi_fecha_reunion  IN DATE,
+    pi_hora_inicio    IN DATE,
+    pi_mod_id_lector  IN NUMBER
+) IS
+    v_tipo_grupo          VARCHAR2(10);
+    v_hora_grupo          DATE;
+    v_mod_fecha_i         DATE;
+    v_mod_hist_fecha_i    DATE;
+    v_conflicto_horario   NUMBER;
+    v_existe_reunion      NUMBER;
+    v_mod_adulto_activo   NUMBER;
+BEGIN
+    SELECT tipo_grupo, hora_reunion
+      INTO v_tipo_grupo, v_hora_grupo
+      FROM MJV_grupo
+     WHERE id_club = pi_id_club
+       AND id_grupo = pi_id_grupo;
+
+    IF TO_CHAR(pi_hora_inicio, 'HH24:MI') != TO_CHAR(v_hora_grupo, 'HH24:MI') THEN
+        RAISE_APPLICATION_ERROR(
+            -20060,
+            'La hora de inicio (' || TO_CHAR(pi_hora_inicio, 'HH24:MI') || ') debe coincidir ' ||
+            'con la hora programada del grupo (' || TO_CHAR(v_hora_grupo, 'HH24:MI') || ').'
+        );
+    END IF;
+
+    IF v_tipo_grupo = 'niños' AND TO_CHAR(pi_hora_inicio, 'HH24:MI') > '17:00' THEN
+        RAISE_APPLICATION_ERROR(
+            -20061,
+            'Error: Las reuniones de niños deben iniciar a más tardar a las 17:00.'
+        );
+    END IF;
+
+    IF TO_CHAR(pi_hora_inicio, 'HH24:MI') > '19:00' THEN
+        RAISE_APPLICATION_ERROR(
+            -20062,
+            'Error: Ninguna reunión puede iniciar después de las 19:00.'
+        );
+    END IF;
+
+    BEGIN
+        SELECT 1
+          INTO v_existe_reunion
+          FROM MJV_libro
+         WHERE isbn = TRIM(pi_isbn);
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(
+                -20063,
+                'Error: El libro con ISBN ' || pi_isbn || ' no está registrado.'
+            );
+    END;
+
+    BEGIN
+        SELECT gl.fecha_i, gl.fec_i
+          INTO v_mod_fecha_i, v_mod_hist_fecha_i
+          FROM MJV_g_lec gl
+         WHERE gl.id_lector = pi_mod_id_lector
+           AND gl.id_club   = pi_id_club
+           AND gl.fec_f     IS NULL;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(
+                -20064,
+                'Error: El moderador con ID ' || pi_mod_id_lector || ' no es miembro activo del club.'
+            );
+    END;
+
+    IF v_tipo_grupo = 'niños' THEN
+        SELECT COUNT(*)
+          INTO v_mod_adulto_activo
+          FROM MJV_g_lec gl
+          JOIN MJV_grupo g ON gl.id_club = g.id_club AND gl.id_grupo = g.id_grupo
+         WHERE gl.id_lector = pi_mod_id_lector
+           AND gl.id_club   = pi_id_club
+           AND gl.fec_f     IS NULL
+           AND g.tipo_grupo = 'adultos';
+
+        IF v_mod_adulto_activo = 0 THEN
+            RAISE_APPLICATION_ERROR(
+                -20067,
+                'Error: Para reuniones de niños el moderador debe pertenecer a un grupo de adultos del mismo club.'
+            );
+        END IF;
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_conflicto_horario
+      FROM MJV_calendario_reunion_mes crm
+      JOIN MJV_grupo g ON g.id_club = crm.id_club AND g.id_grupo = crm.id_grupo
+     WHERE crm.mod_id_lector = pi_mod_id_lector
+       AND crm.id_club = pi_id_club
+       AND crm.fecha = TRUNC(pi_fecha_reunion)
+       AND TO_CHAR(g.hora_reunion, 'HH24:MI') = TO_CHAR(pi_hora_inicio, 'HH24:MI')
+       AND NOT (crm.id_grupo = pi_id_grupo AND crm.isbn = TRIM(pi_isbn) AND crm.fecha = TRUNC(pi_fecha_reunion));
+
+    IF v_conflicto_horario > 0 THEN
+        RAISE_APPLICATION_ERROR(
+            -20065,
+            'Error: El moderador ya tiene una reunión programada ese mismo día y hora.'
+        );
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_existe_reunion
+      FROM MJV_calendario_reunion_mes
+     WHERE id_club = pi_id_club
+       AND id_grupo = pi_id_grupo
+       AND fecha = TRUNC(pi_fecha_reunion)
+       AND isbn = TRIM(pi_isbn);
+
+    IF v_existe_reunion > 0 THEN
+        RAISE_APPLICATION_ERROR(
+            -20066,
+            'Error: Ya existe una reunión programada para ese grupo, libro y fecha.'
+        );
+    END IF;
+
+    INSERT INTO MJV_calendario_reunion_mes (
+        id_club, id_grupo, fecha, isbn,
+        mod_id_lector, mod_fecha_i, mod_hist_fecha_i,
+        realizada, ultima, conclusiones, valoracion
+    ) VALUES (
+        pi_id_club, pi_id_grupo, TRUNC(pi_fecha_reunion), TRIM(pi_isbn),
+        pi_mod_id_lector, v_mod_fecha_i, v_mod_hist_fecha_i,
+        'N', 'N', NULL, NULL
+    );
+
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE(
+        'Reunión agendada: club ' || pi_id_club || ', grupo ' || pi_id_grupo || ', libro ' || pi_isbn ||
+        ', fecha ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY') || ', moderador ' || pi_mod_id_lector
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE;
+END MJV_sp_agendar_reunion_mes;
+/
+
+-- Ejemplo de ejecución: Agendar reunión (Actividad 1)
+/*
+SET SERVEROUTPUT ON;
+DECLARE
+    v_id_club       NUMBER := &id_club;
+    v_id_grupo      NUMBER := &id_grupo;
+    v_isbn          VARCHAR2(20) := '&isbn_libro';
+    v_fecha         DATE := TO_DATE('&fecha_reunion_DD/MM/YYYY', 'DD/MM/YYYY');
+    v_hora_inicio   DATE := TO_DATE('&hora_inicio_HH24:MI', 'HH24:MI');
+    v_id_moderador  NUMBER := &id_moderador;
+BEGIN
+    MJV_sp_agendar_reunion_mes(
+        pi_id_club       => v_id_club,
+        pi_id_grupo      => v_id_grupo,
+        pi_isbn          => v_isbn,
+        pi_fecha_reunion => v_fecha,
+        pi_hora_inicio   => v_hora_inicio,
+        pi_mod_id_lector => v_id_moderador
+    );
+END;
+*/
+
+CREATE OR REPLACE PROCEDURE MJV_sp_registrar_asistencia_miembro (
+    pi_id_lector     IN NUMBER,
+    pi_id_club       IN NUMBER,
+    pi_id_grupo      IN NUMBER,
+    pi_fecha_reunion IN DATE,
+    pi_isbn          IN VARCHAR2,
+    pi_asistio       IN CHAR
+) IS
+    v_asistio_norm     CHAR(1);
+    v_fecha_i          DATE;
+    v_fec_i_g_lec      DATE;
+    v_realizada        CHAR(1);
+    v_reunion_existe   NUMBER;
+BEGIN
+    v_asistio_norm := UPPER(TRIM(pi_asistio));
+    IF v_asistio_norm NOT IN ('S', 'N') THEN
+        RAISE_APPLICATION_ERROR(
+            -20070,
+            'Error: el valor de asistencia debe ser S o N.'
+        );
+    END IF;
+
+    SELECT gl.fecha_i, gl.fec_i
+      INTO v_fecha_i, v_fec_i_g_lec
+      FROM MJV_g_lec gl
+     WHERE gl.id_lector = pi_id_lector
+       AND gl.id_club   = pi_id_club
+       AND gl.id_grupo  = pi_id_grupo
+       AND gl.fec_f     IS NULL;
+
+    SELECT COUNT(*), realizada
+      INTO v_reunion_existe, v_realizada
+      FROM MJV_calendario_reunion_mes crm
+     WHERE crm.id_club = pi_id_club
+       AND crm.id_grupo = pi_id_grupo
+       AND crm.fecha = TRUNC(pi_fecha_reunion)
+       AND crm.isbn = TRIM(pi_isbn)
+     GROUP BY realizada;
+
+    IF v_reunion_existe = 0 THEN
+        RAISE_APPLICATION_ERROR(
+            -20071,
+            'Error: No existe la reunión especificada para ese club/grupo/libro/fecha.'
+        );
+    END IF;
+
+    IF v_realizada = 'N' THEN
+        UPDATE MJV_calendario_reunion_mes
+           SET realizada = 'S'
+         WHERE id_club = pi_id_club
+           AND id_grupo = pi_id_grupo
+           AND fecha = TRUNC(pi_fecha_reunion)
+           AND isbn = TRIM(pi_isbn);
+    END IF;
+
+    IF v_asistio_norm = 'N' THEN
+        SELECT COUNT(*)
+          INTO v_reunion_existe
+          FROM MJV_inasistencia i
+         WHERE i.id_lector = pi_id_lector
+           AND i.id_club = pi_id_club
+           AND i.id_grupo = pi_id_grupo
+           AND i.fecha_reunion = TRUNC(pi_fecha_reunion)
+           AND i.isbn = TRIM(pi_isbn);
+
+        IF v_reunion_existe > 0 THEN
+            RAISE_APPLICATION_ERROR(
+                -20072,
+                'Error: Ya existe una inasistencia registrada para este miembro y reunión.'
+            );
+        END IF;
+
+        INSERT INTO MJV_inasistencia (
+            id_lector, id_club, fecha_i, id_grupo, fec_i_g_lec,
+            fecha_reunion, isbn
+        ) VALUES (
+            pi_id_lector,
+            pi_id_club,
+            v_fecha_i,
+            pi_id_grupo,
+            v_fec_i_g_lec,
+            TRUNC(pi_fecha_reunion),
+            TRIM(pi_isbn)
+        );
+
+        DBMS_OUTPUT.PUT_LINE(
+            'Inasistencia registrada: lector ' || pi_id_lector ||
+            ', club ' || pi_id_club || ', grupo ' || pi_id_grupo ||
+            ', fecha ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY')
+        );
+    ELSE
+        DBMS_OUTPUT.PUT_LINE(
+            'Asistencia confirmada: lector ' || pi_id_lector ||
+            ', club ' || pi_id_club || ', grupo ' || pi_id_grupo ||
+            ', fecha ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY')
+        );
+    END IF;
+
+    COMMIT;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        ROLLBACK;
+        RAISE_APPLICATION_ERROR(
+            -20073,
+            'Error: el miembro o la reunión no se encontró para el club/grupo indicado.'
+        );
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE;
+END MJV_sp_registrar_asistencia_miembro;
+/
+
+-- Ejemplo de ejecución: Registrar asistencia/inasistencia (Actividad 2)
+/*
+SET SERVEROUTPUT ON;
+DECLARE
+    v_id_lector     NUMBER := &id_lector;
+    v_id_club       NUMBER := &id_club;
+    v_id_grupo      NUMBER := &id_grupo;
+    v_fecha_reunion DATE := TO_DATE('&fecha_reunion_DD/MM/YYYY', 'DD/MM/YYYY');
+    v_isbn          VARCHAR2(20) := '&isbn_libro';
+    v_asistio       CHAR(1) := '&asistio_SN';
+BEGIN
+    MJV_sp_registrar_asistencia_miembro(
+        pi_id_lector     => v_id_lector,
+        pi_id_club       => v_id_club,
+        pi_id_grupo      => v_id_grupo,
+        pi_fecha_reunion => v_fecha_reunion,
+        pi_isbn          => v_isbn,
+        pi_asistio       => v_asistio
+    );
+END;
+*/
+
+CREATE OR REPLACE TRIGGER MJV_tgr_retirar_por_inasistencia
+AFTER INSERT ON MJV_inasistencia
+FOR EACH ROW
+DECLARE
+    v_pct NUMBER;
+BEGIN
+    v_pct := MJV_fn_pct_inasistencia_bimestre(
+                  :NEW.id_lector,
+                  :NEW.id_club,
+                  :NEW.fecha_reunion,
+                  :NEW.id_grupo,
+                  :NEW.isbn
+              );
+
+    IF v_pct > 30 THEN
+        UPDATE MJV_g_lec
+           SET fec_f = SYSDATE
+         WHERE id_lector = :NEW.id_lector
+           AND id_club   = :NEW.id_club
+           AND fec_f     IS NULL;
+
+        UPDATE MJV_historia_membresia
+           SET estatus       = 'retirado',
+               fecha_f       = SYSDATE,
+               motivo_retiro = 'inasistencia'
+         WHERE id_lector = :NEW.id_lector
+           AND id_club   = :NEW.id_club
+           AND estatus   = 'activo';
+
+        DBMS_OUTPUT.PUT_LINE(
+            'RETIRO AUTOMÁTICO: Lector ID ' || :NEW.id_lector
+            || ' — ' || ROUND(v_pct, 1) || '% de inasistencia en el bimestre.'
+        );
+    END IF;
+END MJV_tgr_retirar_por_inasistencia;
+/
+
+-- Nota: el trigger se activa automáticamente cuando se inserta una inasistencia en MJV_inasistencia.
+
+CREATE OR REPLACE PROCEDURE MJV_sp_cerrar_discusion_reunion (
+    pi_id_club       IN NUMBER,
+    pi_id_grupo      IN NUMBER,
+    pi_fecha_reunion IN DATE,
+    pi_isbn          IN VARCHAR2,
+    pi_conclusiones  IN VARCHAR2,
+    pi_valoracion    IN NUMBER
+) IS
+    v_reunion_realizada CHAR(1);
+    v_ultima_actual     CHAR(1);
+    v_conclusiones_norm VARCHAR2(4000);
+BEGIN
+    v_conclusiones_norm := TRIM(pi_conclusiones);
+
+    IF v_conclusiones_norm IS NULL THEN
+        RAISE_APPLICATION_ERROR(
+            -20080,
+            'Error: las conclusiones de cierre no pueden estar vacías.'
+        );
+    END IF;
+
+    IF pi_valoracion NOT BETWEEN 1 AND 5 THEN
+        RAISE_APPLICATION_ERROR(
+            -20081,
+            'Error: la valoración final debe ser un número entre 1 y 5.'
+        );
+    END IF;
+
+    SELECT realizada, ultima
+      INTO v_reunion_realizada, v_ultima_actual
+      FROM MJV_calendario_reunion_mes
+     WHERE id_club = pi_id_club
+       AND id_grupo = pi_id_grupo
+       AND fecha = TRUNC(pi_fecha_reunion)
+       AND isbn = TRIM(pi_isbn);
+
+    IF v_ultima_actual = 'S' THEN
+        RAISE_APPLICATION_ERROR(
+            -20082,
+            'Error: la reunión ya está cerrada como última discusión.'
+        );
+    END IF;
+
+    UPDATE MJV_calendario_reunion_mes
+       SET ultima = 'N'
+     WHERE id_club = pi_id_club
+       AND id_grupo = pi_id_grupo
+       AND isbn = TRIM(pi_isbn)
+       AND fecha != TRUNC(pi_fecha_reunion)
+       AND ultima = 'S';
+
+    UPDATE MJV_calendario_reunion_mes
+       SET realizada   = 'S',
+           ultima      = 'S',
+           conclusiones = v_conclusiones_norm,
+           valoracion   = pi_valoracion
+     WHERE id_club = pi_id_club
+       AND id_grupo = pi_id_grupo
+       AND fecha = TRUNC(pi_fecha_reunion)
+       AND isbn = TRIM(pi_isbn);
+
+    COMMIT;
+
+    DBMS_OUTPUT.PUT_LINE(
+        'Discusión cerrada: club ' || pi_id_club ||
+        ', grupo ' || pi_id_grupo ||
+        ', libro ' || TRIM(pi_isbn) ||
+        ', fecha ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY') ||
+        ', valoración ' || pi_valoracion
+    );
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        ROLLBACK;
+        RAISE_APPLICATION_ERROR(
+            -20083,
+            'Error: no se encontró la reunión para cerrar.'
+        );
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE;
+END MJV_sp_cerrar_discusion_reunion;
+/
+
+-- Ejemplo de ejecución: Cerrar discusión y registrar valoración (Actividad 3)
+/*
+SET SERVEROUTPUT ON;
+DECLARE
+    v_id_club       NUMBER := &id_club;
+    v_id_grupo      NUMBER := &id_grupo;
+    v_fecha         DATE := TO_DATE('&fecha_reunion_DD/MM/YYYY', 'DD/MM/YYYY');
+    v_isbn          VARCHAR2(20) := '&isbn_libro';
+    v_conclusiones  VARCHAR2(4000) := '&conclusiones';
+    v_valoracion    NUMBER := &valoracion_final;
+BEGIN
+    MJV_sp_cerrar_discusion_reunion(
+        pi_id_club       => v_id_club,
+        pi_id_grupo      => v_id_grupo,
+        pi_fecha_reunion => v_fecha,
+        pi_isbn          => v_isbn,
+        pi_conclusiones  => v_conclusiones,
+        pi_valoracion    => v_valoracion
+    );
+END;
+*/

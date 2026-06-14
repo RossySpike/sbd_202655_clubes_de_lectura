@@ -2422,49 +2422,52 @@ END;
 
 -- Convierte un monto entre monedas usando una tasa suministrada por quien ejecuta.
 -- p_tasa = unidades de p_moneda_destino por cada 1 unidad de p_moneda_origen.
--- Valida que ambas monedas existan en pais.moneda_local.
 CREATE OR REPLACE FUNCTION MJV_conversion_monetaria(
   p_monto          NUMBER,
   p_moneda_origen  VARCHAR2,
-  p_moneda_destino VARCHAR2,
   p_tasa           NUMBER
 ) RETURN NUMBER
 IS
-  v_origen  VARCHAR2(3) := UPPER(TRIM(p_moneda_origen));
-  v_destino VARCHAR2(3) := UPPER(TRIM(p_moneda_destino));
-  v_count   NUMBER;
+  v_origen        VARCHAR2(3) := UPPER(TRIM(p_moneda_origen));
+  v_destino       CONSTANT VARCHAR2(3) := 'USD'; -- Moneda destino fija por requerimiento
+  v_count_origen  NUMBER := 0;
 BEGIN
-  IF p_monto IS NULL OR p_tasa IS NULL THEN
+  -- 1. Control de Nulos: Si el monto es nulo, no hay nada que transformar
+  IF p_monto IS NULL THEN
     RETURN NULL;
   END IF;
 
+  -- 2. Regla de Eficiencia: Si la moneda origen ya es USD, se retorna el monto directo
+  -- No se requiere validar tasas ni consultar la base de datos
   IF v_origen = v_destino THEN
-  RAISE_APPLICATION_ERROR(-20105, 'No se puede realizar la conversion porque las monedas son la misma.');
+    RETURN ROUND(p_monto, 2);
+  END IF;
+
+  -- 3. Validaciones obligatorias si es una moneda extranjera distinta a USD
+  IF p_tasa IS NULL THEN
+    RETURN NULL;
   END IF;
 
   IF p_tasa <= 0 THEN
-    RAISE_APPLICATION_ERROR(-20101, 'La tasa de conversión debe ser mayor que cero.');
+    RAISE_APPLICATION_ERROR(-20101, 'La tasa de conversión hacia USD debe ser mayor que cero.');
   END IF;
 
-  SELECT COUNT(*) INTO v_count
-  FROM MJV_pais
-  WHERE moneda_local = v_origen;
+  -- 4. Verificación de integridad: Validar que la moneda origen exista en el catálogo de países
+  SELECT COUNT(*)
+    INTO v_count_origen
+    FROM MJV_pais
+   WHERE moneda_local = v_origen;
 
-  IF v_count = 0 THEN
-    RAISE_APPLICATION_ERROR(-20102, 'Moneda origen no registrada: ' || v_origen);
+  IF v_count_origen = 0 THEN
+    RAISE_APPLICATION_ERROR(-20102, 'Moneda origen no registrada en el sistema: ' || v_origen);
   END IF;
 
-  SELECT COUNT(*) INTO v_count
-  FROM MJV_pais
-  WHERE moneda_local = v_destino;
-
-  IF v_count = 0 THEN
-    RAISE_APPLICATION_ERROR(-20103, 'Moneda destino no registrada: ' || v_destino);
-  END IF;
-
+  -- 5. Ejecución del cálculo monetario (Monto Origen / Tasa = Equivalente en USD)
   RETURN ROUND(p_monto / p_tasa, 2);
-END MJV_conversion_monetaria;  
+END MJV_conversion_monetaria;
 /
+
+
 CREATE OR REPLACE FUNCTION MJV_edad_miembro(p_id_lector NUMBER)
 RETURN NUMBER
 IS

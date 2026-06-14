@@ -163,6 +163,7 @@ END MJV_tgr_retirar_por_inasistencia;
 SET SERVEROUTPUT ON;
 DECLARE
     v_id_lector     NUMBER := &id_miembro;
+    -- Nota: se espera el ID numérico del lector (`id_lector`). Evitar usar `doc_identidad` aquí.
     v_id_club       NUMBER := &id_club;
     v_id_grupo      NUMBER := &id_grupo;
     v_fecha_reunion DATE := TO_DATE('&fecha_reunion_DD/MM/YYYY', 'DD/MM/YYYY');

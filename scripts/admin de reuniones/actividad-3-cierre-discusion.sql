@@ -46,6 +46,14 @@ BEGIN
     END IF;
 
     UPDATE MJV_calendario_reunion_mes
+       SET ultima = 'N'
+     WHERE id_club = pi_id_club
+       AND id_grupo = pi_id_grupo
+       AND isbn = TRIM(pi_isbn)
+       AND fecha != TRUNC(pi_fecha_reunion)
+       AND ultima = 'S';
+
+    UPDATE MJV_calendario_reunion_mes
        SET realizada   = 'S',
            ultima      = 'S',
            conclusiones = v_conclusiones_norm,
@@ -83,6 +91,7 @@ SET SERVEROUTPUT ON;
 DECLARE
     v_id_club       NUMBER := &id_club;
     v_id_grupo      NUMBER := &id_grupo;
+    -- Nota: este procedimiento no solicita doc_identidad; usa id_club/id_grupo/fecha/isbn.
     v_fecha         DATE := TO_DATE('&fecha_reunion_DD/MM/YYYY', 'DD/MM/YYYY');
     v_isbn          VARCHAR2(20) := '&isbn_libro';
     v_conclusiones  VARCHAR2(4000) := '&conclusiones';

@@ -17,6 +17,7 @@ CREATE OR REPLACE PROCEDURE MJV_sp_agendar_reunion_mes (
     v_mod_hist_fecha_i    DATE;
     v_conflicto_horario   NUMBER;
     v_existe_reunion      NUMBER;
+    v_mod_adulto_activo   NUMBER;
 BEGIN
     -- 1. Validar grupo y obtener la hora definida para el grupo
     SELECT tipo_grupo, hora_reunion
@@ -139,6 +140,7 @@ END MJV_sp_agendar_reunion_mes;
 -- Ejemplo de ejecución:
 /*
 SET SERVEROUTPUT ON;
+-- Nota: usar el ID numérico del lector para el moderador (id_lector), no su documento.
 DECLARE
     v_id_club       NUMBER := &id_club;
     v_id_grupo      NUMBER := &id_grupo;
