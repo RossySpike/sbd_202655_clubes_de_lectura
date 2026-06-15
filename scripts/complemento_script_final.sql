@@ -671,7 +671,7 @@ BEGIN
     -- 1. Resolver club
     v_id_club := MJV_fn_obtener_id_club_por_nombre(pi_nombre_club);
 
-    -- 3. [BRECHA 6] Verificar que el club cobra cuota antes de todo
+    -- 2. [BRECHA 6] Verificar que el club cobra cuota antes de todo
     SELECT cuota_anual INTO v_cuota_anual FROM MJV_club WHERE id_club = v_id_club;
 
     IF v_cuota_anual = 'N' THEN
@@ -682,13 +682,14 @@ BEGIN
         );
     END IF;
 
-    -- 4. Obtener fecha_i de membresía activa
+    -- 2. Obtener fecha_i de membresía activa
     BEGIN
         SELECT fecha_i INTO v_fecha_i
           FROM MJV_historia_membresia
          WHERE id_lector = pi_id_lector
            AND id_club   = v_id_club
-           AND estatus   = 'activo';
+           AND estatus   = 'activo'
+           AND ROWNUM    = 1;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(
@@ -697,7 +698,7 @@ BEGIN
             );
     END;
 
-    -- 5. Conversión y validación de monto mínimo
+    -- 4. Conversión y validación de monto mínimo
     v_monto_usd := MJV_conversion_monetaria(pi_monto, pi_moneda, pi_tasa);
 
     IF v_monto_usd < 100 THEN
@@ -708,7 +709,7 @@ BEGIN
         );
     END IF;
 
-    -- 6. Registrar pago
+    -- 5. Registrar pago
     INSERT INTO MJV_pago_membresia (id_lector, id_club, fecha_i, fecha_pago, monto)
     VALUES (pi_id_lector, v_id_club, v_fecha_i, SYSDATE, v_monto_usd);
 
@@ -1616,6 +1617,410 @@ ORDER BY c.nombre_club, nombre_moderador;
 
 
 -- =============================================================================
+-- VISTAS DE REPORTES JASPERSOFT
+-- Reporte 1: Ficha completa de un miembro
+-- Reporte 2: Ficha de un club
+-- Reporte 3: Ficha de un libro
+-- Reporte 4: Financiero y de crecimiento anual de clubes
+-- =============================================================================
+
+CREATE OR REPLACE VIEW MJV_vw_r1_ficha_miembro AS
+SELECT
+    l.id_lector,
+    l.p_nombre || ' ' || l.p_apellido || ' ' || NVL(l.s_apellido, '') AS nombre_completo,
+    l.doc_identidad,
+    l.telefono,
+    l.email,
+    CASE l.genero WHEN 'M' THEN 'Masculino' WHEN 'F' THEN 'Femenino' END AS genero,
+    l.fecha_nac,
+    TRUNC(MONTHS_BETWEEN(SYSDATE, l.fecha_nac) / 12) AS edad,
+    p.nombre_pais      AS pais_nacimiento,
+    p.nacionalidad
+FROM
+    MJV_lector l
+    JOIN MJV_pais p ON p.id_pais = l.id_pais_nac;
+
+CREATE OR REPLACE VIEW MJV_vw_r1_historial_clubes AS
+SELECT
+    hm.id_lector,
+    c.id_club,
+    c.nombre_club,
+    p.nombre_pais   AS pais_club,
+    ci.nombre_ciudad AS ciudad_club,
+    hm.fecha_i      AS fecha_ingreso,
+    hm.fecha_f      AS fecha_retiro,
+    hm.estatus,
+    hm.motivo_retiro
+FROM
+    MJV_historia_membresia hm
+    JOIN MJV_club   c  ON c.id_club  = hm.id_club
+    JOIN MJV_pais   p  ON p.id_pais  = c.id_pais
+    JOIN MJV_ciudad ci ON ci.id_pais = c.id_pais AND ci.id_ciudad = c.id_ciudad
+ORDER BY
+    hm.id_lector,
+    hm.fecha_i DESC;
+
+CREATE OR REPLACE VIEW MJV_vw_r1_preferencias AS
+SELECT
+    po.id_lector,
+    po.prioridad,
+    lb.isbn,
+    lb.titulo,
+    LISTAGG(
+        NVL(a.p_nombre, a.nombre_ant_pseudonimo) || ' ' || NVL(a.p_apellido, ''),
+        ', '
+    ) WITHIN GROUP (ORDER BY a.id_autor) AS autores,
+    lb.genero,
+    lb.primera_edicion
+FROM
+    MJV_preferencia_obra po
+    JOIN MJV_libro      lb ON lb.isbn     = po.isbn
+    JOIN MJV_libro_autor la ON la.isbn     = lb.isbn
+    JOIN MJV_autor       a  ON a.id_autor  = la.id_autor
+GROUP BY
+    po.id_lector,
+    po.prioridad,
+    lb.isbn,
+    lb.titulo,
+    lb.genero,
+    lb.primera_edicion
+ORDER BY
+    po.id_lector,
+    po.prioridad;
+
+CREATE OR REPLACE VIEW MJV_vw_r1_libros_analizados AS
+SELECT DISTINCT
+    crm.mod_id_lector                                      AS id_lector,
+    lb.isbn,
+    lb.titulo,
+    LISTAGG(
+        NVL(a.p_nombre, a.nombre_ant_pseudonimo) || ' ' || NVL(a.p_apellido, ''),
+        ', '
+    ) WITHIN GROUP (ORDER BY a.id_autor)                   AS autores,
+    crm.valoracion,
+    crm.conclusiones,
+    c.nombre_club,
+    g.tipo_grupo,
+    crm.fecha                                              AS fecha_reunion
+FROM
+    MJV_calendario_reunion_mes crm
+    JOIN MJV_libro      lb ON lb.isbn     = crm.isbn
+    JOIN MJV_libro_autor la ON la.isbn    = lb.isbn
+    JOIN MJV_autor       a  ON a.id_autor = la.id_autor
+    JOIN MJV_club        c  ON c.id_club  = crm.id_club
+    JOIN MJV_grupo       g  ON g.id_grupo = crm.id_grupo AND g.id_club = crm.id_club
+WHERE
+    crm.ultima = 'S'
+GROUP BY
+    crm.mod_id_lector,
+    lb.isbn,
+    lb.titulo,
+    crm.valoracion,
+    crm.conclusiones,
+    c.nombre_club,
+    g.tipo_grupo,
+    crm.fecha;
+
+CREATE OR REPLACE VIEW MJV_vw_r1_consolidado AS
+SELECT
+    fm.id_lector,
+    fm.nombre_completo,
+    fm.doc_identidad,
+    fm.telefono,
+    fm.email,
+    fm.genero,
+    TO_CHAR(fm.fecha_nac, 'DD/MM/YYYY')        AS fecha_nacimiento,
+    fm.edad,
+    fm.pais_nacimiento,
+    fm.nacionalidad,
+    (SELECT pr.titulo FROM MJV_vw_r1_preferencias pr
+      WHERE pr.id_lector = fm.id_lector AND pr.prioridad = 1) AS favorito_1,
+    (SELECT pr.titulo FROM MJV_vw_r1_preferencias pr
+      WHERE pr.id_lector = fm.id_lector AND pr.prioridad = 2) AS favorito_2,
+    (SELECT pr.titulo FROM MJV_vw_r1_preferencias pr
+      WHERE pr.id_lector = fm.id_lector AND pr.prioridad = 3) AS favorito_3,
+    hc.id_club,
+    hc.nombre_club,
+    hc.pais_club,
+    hc.ciudad_club,
+    TO_CHAR(hc.fecha_ingreso, 'DD/MM/YYYY')    AS fecha_ingreso_club,
+    TO_CHAR(hc.fecha_retiro,  'DD/MM/YYYY')    AS fecha_retiro_club,
+    hc.estatus,
+    hc.motivo_retiro,
+    TRUNC(MONTHS_BETWEEN(NVL(hc.fecha_retiro, SYSDATE), hc.fecha_ingreso)) AS meses_antiguedad,
+    la.titulo       AS libro_analizado,
+    la.autores      AS autores_libro,
+    la.valoracion,
+    la.conclusiones,
+    TO_CHAR(la.fecha_reunion, 'DD/MM/YYYY')    AS fecha_cierre_libro
+FROM
+    MJV_vw_r1_ficha_miembro       fm
+    JOIN MJV_vw_r1_historial_clubes hc ON hc.id_lector = fm.id_lector
+    LEFT JOIN MJV_vw_r1_libros_analizados la
+           ON la.id_lector  = fm.id_lector
+          AND la.nombre_club = hc.nombre_club
+ORDER BY
+    fm.id_lector,
+    hc.estatus ASC,
+    hc.fecha_ingreso DESC,
+    la.fecha_reunion DESC;
+
+CREATE OR REPLACE VIEW MJV_vw_r2_ficha_club AS
+SELECT
+    c.id_club,
+    c.nombre_club,
+    p.nombre_pais,
+    ci.nombre_ciudad,
+    c.cod_postal,
+    CASE c.cuota_anual WHEN 'S' THEN 'Independiente (cobra cuota)' ELSE 'Institucional (sin cuota)' END AS tipo_club,
+    NVL(
+        (SELECT COUNT(*) FROM MJV_grupo g2
+          WHERE g2.id_club = c.id_club AND g2.tipo_grupo = 'adultos'), 0
+    ) AS grupos_adultos,
+    NVL(
+        (SELECT COUNT(*) FROM MJV_grupo g2
+          WHERE g2.id_club = c.id_club AND g2.tipo_grupo = 'jovenes'), 0
+    ) AS grupos_jovenes,
+    NVL(
+        (SELECT COUNT(*) FROM MJV_grupo g2
+          WHERE g2.id_club = c.id_club AND g2.tipo_grupo = 'niños'), 0
+    ) AS grupos_ninos,
+    (SELECT COUNT(*) FROM MJV_grupo g2 WHERE g2.id_club = c.id_club) AS total_grupos
+FROM
+    MJV_club    c
+    JOIN MJV_pais   p  ON p.id_pais  = c.id_pais
+    JOIN MJV_ciudad ci ON ci.id_pais = c.id_pais AND ci.id_ciudad = c.id_ciudad;
+
+CREATE OR REPLACE VIEW MJV_vw_r2_libros_por_club AS
+SELECT
+    crm.id_club,
+    lb.isbn,
+    lb.titulo,
+    LISTAGG(
+        NVL(a.p_nombre, a.nombre_ant_pseudonimo) || ' ' || NVL(a.p_apellido, ''),
+        ', '
+    ) WITHIN GROUP (ORDER BY a.id_autor)         AS autores,
+    lb.genero,
+    ROUND(AVG(crm.valoracion), 2)                AS valoracion_promedio_club,
+    COUNT(DISTINCT crm.id_grupo)                 AS cantidad_grupos_que_lo_analizaron
+FROM
+    MJV_calendario_reunion_mes crm
+    JOIN MJV_libro      lb ON lb.isbn     = crm.isbn
+    JOIN MJV_libro_autor la ON la.isbn    = lb.isbn
+    JOIN MJV_autor       a  ON a.id_autor = la.id_autor
+WHERE
+    crm.ultima    = 'S'
+    AND crm.valoracion IS NOT NULL
+GROUP BY
+    crm.id_club,
+    lb.isbn,
+    lb.titulo,
+    lb.genero
+ORDER BY
+    crm.id_club,
+    valoracion_promedio_club DESC;
+
+CREATE OR REPLACE VIEW MJV_vw_r2_consolidado AS
+SELECT
+    fc.id_club,
+    fc.nombre_club,
+    fc.nombre_pais,
+    fc.nombre_ciudad,
+    fc.cod_postal,
+    fc.tipo_club,
+    fc.grupos_adultos,
+    fc.grupos_jovenes,
+    fc.grupos_ninos,
+    fc.total_grupos,
+    lc.isbn,
+    lc.titulo                              AS titulo_libro,
+    lc.autores                             AS autores_libro,
+    lc.genero                              AS genero_libro,
+    lc.valoracion_promedio_club,
+    lc.cantidad_grupos_que_lo_analizaron
+FROM
+    MJV_vw_r2_ficha_club           fc
+    LEFT JOIN MJV_vw_r2_libros_por_club lc ON lc.id_club = fc.id_club
+ORDER BY
+    fc.id_club,
+    lc.valoracion_promedio_club DESC NULLS LAST,
+    lc.titulo ASC;
+
+CREATE OR REPLACE VIEW MJV_vw_r3_ficha_libro AS
+SELECT
+    lb.isbn,
+    lb.titulo,
+    lb.tipo_narrativa,
+    lb.sinopsis,
+    lb.genero,
+    lb.primera_edicion,
+    lb.total_paginas,
+    p.nombre_pais          AS pais_origen,
+    LISTAGG(
+        NVL(a.p_nombre, a.nombre_ant_pseudonimo) || ' ' || NVL(a.p_apellido, ''),
+        ', '
+    ) WITHIN GROUP (ORDER BY a.id_autor) AS autores,
+    ROUND(
+        (SELECT AVG(crm2.valoracion)
+           FROM MJV_calendario_reunion_mes crm2
+          WHERE crm2.isbn   = lb.isbn
+            AND crm2.ultima = 'S'
+            AND crm2.valoracion IS NOT NULL),
+        2
+    ) AS valoracion_global
+FROM
+    MJV_libro      lb
+    JOIN MJV_pais       p  ON p.id_pais   = lb.id_pais
+    JOIN MJV_libro_autor la ON la.isbn    = lb.isbn
+    JOIN MJV_autor       a  ON a.id_autor = la.id_autor
+GROUP BY
+    lb.isbn,
+    lb.titulo,
+    lb.tipo_narrativa,
+    lb.sinopsis,
+    lb.genero,
+    lb.primera_edicion,
+    lb.total_paginas,
+    p.nombre_pais;
+
+CREATE OR REPLACE VIEW MJV_vw_r3_analisis_por_grupo AS
+SELECT
+    crm.isbn,
+    c.id_club,
+    c.nombre_club,
+    p.nombre_pais    AS pais_club,
+    ci.nombre_ciudad AS ciudad_club,
+    g.id_grupo,
+    g.tipo_grupo,
+    crm.valoracion,
+    crm.conclusiones,
+    crm.fecha        AS fecha_cierre,
+    l.p_nombre || ' ' || l.p_apellido || ' ' || NVL(l.s_apellido, '') AS nombre_moderador
+FROM
+    MJV_calendario_reunion_mes crm
+    JOIN MJV_club    c  ON c.id_club   = crm.id_club
+    JOIN MJV_pais    p  ON p.id_pais   = c.id_pais
+    JOIN MJV_ciudad  ci ON ci.id_pais  = c.id_pais  AND ci.id_ciudad = c.id_ciudad
+    JOIN MJV_grupo   g  ON g.id_grupo  = crm.id_grupo AND g.id_club  = crm.id_club
+    JOIN MJV_lector  l  ON l.id_lector = crm.mod_id_lector
+WHERE
+    crm.ultima     = 'S'
+    AND crm.valoracion IS NOT NULL
+ORDER BY
+    crm.isbn,
+    crm.valoracion DESC,
+    crm.fecha DESC;
+
+CREATE OR REPLACE VIEW MJV_vw_r3_consolidado AS
+SELECT
+    fl.isbn,
+    fl.titulo,
+    fl.tipo_narrativa,
+    fl.sinopsis,
+    fl.genero,
+    fl.primera_edicion,
+    fl.total_paginas,
+    fl.pais_origen,
+    fl.autores,
+    fl.valoracion_global,
+    ag.id_club,
+    ag.nombre_club,
+    ag.pais_club,
+    ag.ciudad_club,
+    ag.id_grupo,
+    ag.tipo_grupo,
+    ag.valoracion                          AS valoracion_grupo,
+    ag.conclusiones,
+    TO_CHAR(ag.fecha_cierre, 'DD/MM/YYYY') AS fecha_cierre,
+    ag.nombre_moderador
+FROM
+    MJV_vw_r3_ficha_libro               fl
+    LEFT JOIN MJV_vw_r3_analisis_por_grupo ag ON ag.isbn = fl.isbn
+ORDER BY
+    fl.isbn,
+    ag.valoracion DESC NULLS LAST,
+    ag.fecha_cierre DESC NULLS LAST;
+
+CREATE OR REPLACE VIEW MJV_vw_r4_crecimiento_anual AS
+WITH
+miembros_por_anio AS (
+    SELECT
+        hm.id_club,
+        EXTRACT(YEAR FROM hm.fecha_i)  AS anio,
+        COUNT(*)                        AS nuevos_miembros
+    FROM
+        MJV_historia_membresia hm
+    GROUP BY
+        hm.id_club,
+        EXTRACT(YEAR FROM hm.fecha_i)
+),
+ingresos_por_anio AS (
+    SELECT
+        pm.id_club,
+        EXTRACT(YEAR FROM pm.fecha_pago) AS anio,
+        SUM(pm.monto)                     AS ingresos_usd
+    FROM
+        MJV_pago_membresia pm
+        JOIN MJV_club c ON c.id_club = pm.id_club
+    WHERE
+        c.cuota_anual = 'S'
+    GROUP BY
+        pm.id_club,
+        EXTRACT(YEAR FROM pm.fecha_pago)
+),
+anios_por_club AS (
+    SELECT id_club, anio FROM miembros_por_anio
+    UNION
+    SELECT id_club, anio FROM ingresos_por_anio
+),
+consolidado AS (
+    SELECT
+        ac.id_club,
+        ac.anio,
+        NVL(m.nuevos_miembros, 0)  AS nuevos_miembros,
+        NVL(i.ingresos_usd, 0)     AS ingresos_usd,
+        LAG(NVL(m.nuevos_miembros, 0))
+            OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS miembros_anio_anterior,
+        LAG(NVL(i.ingresos_usd, 0))
+            OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS ingresos_anio_anterior
+    FROM
+        anios_por_club     ac
+        LEFT JOIN miembros_por_anio m ON m.id_club = ac.id_club AND m.anio = ac.anio
+        LEFT JOIN ingresos_por_anio i ON i.id_club = ac.id_club AND i.anio = ac.anio
+)
+SELECT
+    c.id_club,
+    c.nombre_club,
+    p.nombre_pais,
+    ci.nombre_ciudad,
+    CASE c.cuota_anual WHEN 'S' THEN 'Independiente' ELSE 'Institucional' END AS tipo_club,
+    co.anio,
+    co.nuevos_miembros,
+    co.ingresos_usd,
+    co.miembros_anio_anterior,
+    co.ingresos_anio_anterior,
+    ROUND(
+        ((co.nuevos_miembros - co.miembros_anio_anterior)
+         / NULLIF(co.miembros_anio_anterior, 0)) * 100,
+        2
+    ) AS pct_crecimiento_miembros,
+    ROUND(
+        ((co.ingresos_usd - co.ingresos_anio_anterior)
+         / NULLIF(co.ingresos_anio_anterior, 0)) * 100,
+        2
+    ) AS pct_crecimiento_economico
+FROM
+    consolidado       co
+    JOIN MJV_club    c  ON c.id_club  = co.id_club
+    JOIN MJV_pais    p  ON p.id_pais  = c.id_pais
+    JOIN MJV_ciudad  ci ON ci.id_pais = c.id_pais AND ci.id_ciudad = c.id_ciudad
+ORDER BY
+    pct_crecimiento_miembros DESC NULLS LAST,
+    pct_crecimiento_economico DESC NULLS LAST,
+    co.anio DESC;
+
+
+-- =============================================================================
 -- VERIFICACIÓN: confirmar que todos los objetos compilaron correctamente
 -- =============================================================================
 -- SELECT object_name, object_type, status
@@ -1631,3 +2036,230 @@ ORDER BY c.nombre_club, nombre_moderador;
 --        'MJV_VW_MODERADORES_ACTIVOS'
 --  )
 --  ORDER BY object_type, object_name;
+
+CREATE OR REPLACE PACKAGE MJV_PKG_ADMIN_CLUBES AS
+
+    -- Inscribe un nuevo lector en un club, asignándolo al grupo por edad y
+    -- registrando sus 3 preferencias de obra.
+    PROCEDURE inscribir_miembro (
+        pi_p_nombre        IN VARCHAR2,
+        pi_p_apellido      IN VARCHAR2,
+        pi_s_nombre        IN VARCHAR2 DEFAULT NULL,
+        pi_s_apellido      IN VARCHAR2,
+        pi_doc_identidad   IN VARCHAR2,
+        pi_telefono        IN VARCHAR2,
+        pi_email           IN VARCHAR2,
+        pi_genero          IN VARCHAR2,
+        pi_fecha_nac       IN DATE,
+        pi_nombre_pais_nac IN VARCHAR2,
+        pi_nombre_club     IN VARCHAR2,
+        pi_titulo_pref1    IN VARCHAR2,
+        pi_titulo_pref2    IN VARCHAR2,
+        pi_titulo_pref3    IN VARCHAR2,
+        pi_id_rep          IN NUMBER   DEFAULT NULL,
+        pi_tipo_rep        IN VARCHAR2 DEFAULT NULL
+    );
+
+    -- Registra un pago de cuota anual para un lector activo en un club con cuota.
+    PROCEDURE registrar_pago (
+        pi_id_lector   IN NUMBER,
+        pi_nombre_club IN VARCHAR2,
+        pi_monto       IN NUMBER,
+        pi_moneda      IN VARCHAR2,
+        pi_tasa        IN NUMBER
+    );
+
+    -- Procesa el retiro voluntario o administrativo de un lector de un club.
+    PROCEDURE retirar_miembro (
+        pi_id_lector     IN NUMBER,
+        pi_nombre_club   IN VARCHAR2,
+        pi_motivo_retiro IN VARCHAR2
+    );
+
+END MJV_PKG_ADMIN_CLUBES;
+/
+
+CREATE OR REPLACE PACKAGE BODY MJV_PKG_ADMIN_CLUBES AS
+
+    PROCEDURE inscribir_miembro (
+        pi_p_nombre        IN VARCHAR2,
+        pi_p_apellido      IN VARCHAR2,
+        pi_s_nombre        IN VARCHAR2 DEFAULT NULL,
+        pi_s_apellido      IN VARCHAR2,
+        pi_doc_identidad   IN VARCHAR2,
+        pi_telefono        IN VARCHAR2,
+        pi_email           IN VARCHAR2,
+        pi_genero          IN VARCHAR2,
+        pi_fecha_nac       IN DATE,
+        pi_nombre_pais_nac IN VARCHAR2,
+        pi_nombre_club     IN VARCHAR2,
+        pi_titulo_pref1    IN VARCHAR2,
+        pi_titulo_pref2    IN VARCHAR2,
+        pi_titulo_pref3    IN VARCHAR2,
+        pi_id_rep          IN NUMBER   DEFAULT NULL,
+        pi_tipo_rep        IN VARCHAR2 DEFAULT NULL
+    ) IS
+    BEGIN
+        MJV_sp_inscribir_miembro(
+            pi_p_nombre        => pi_p_nombre,
+            pi_p_apellido      => pi_p_apellido,
+            pi_s_nombre        => pi_s_nombre,
+            pi_s_apellido      => pi_s_apellido,
+            pi_doc_identidad   => pi_doc_identidad,
+            pi_telefono        => pi_telefono,
+            pi_email           => pi_email,
+            pi_genero          => pi_genero,
+            pi_fecha_nac       => pi_fecha_nac,
+            pi_nombre_pais_nac => pi_nombre_pais_nac,
+            pi_nombre_club     => pi_nombre_club,
+            pi_titulo_pref1    => pi_titulo_pref1,
+            pi_titulo_pref2    => pi_titulo_pref2,
+            pi_titulo_pref3    => pi_titulo_pref3,
+            pi_id_rep          => pi_id_rep,
+            pi_tipo_rep        => pi_tipo_rep
+        );
+    END inscribir_miembro;
+
+    PROCEDURE registrar_pago (
+        pi_id_lector   IN NUMBER,
+        pi_nombre_club IN VARCHAR2,
+        pi_monto       IN NUMBER,
+        pi_moneda      IN VARCHAR2,
+        pi_tasa        IN NUMBER
+    ) IS
+    BEGIN
+        MJV_sp_registrar_pago_membresia(
+            pi_id_lector   => pi_id_lector,
+            pi_nombre_club => pi_nombre_club,
+            pi_monto       => pi_monto,
+            pi_moneda      => pi_moneda,
+            pi_tasa        => pi_tasa
+        );
+    END registrar_pago;
+
+    PROCEDURE retirar_miembro (
+        pi_id_lector     IN NUMBER,
+        pi_nombre_club   IN VARCHAR2,
+        pi_motivo_retiro IN VARCHAR2
+    ) IS
+    BEGIN
+        MJV_sp_retirar_miembro(
+            pi_id_lector     => pi_id_lector,
+            pi_nombre_club   => pi_nombre_club,
+            pi_motivo_retiro => pi_motivo_retiro
+        );
+    END retirar_miembro;
+
+END MJV_PKG_ADMIN_CLUBES;
+/
+
+
+-- =============================================================================
+-- PAQUETE 2: MJV_PKG_ADMIN_REUNIONES
+-- =============================================================================
+
+CREATE OR REPLACE PACKAGE MJV_PKG_ADMIN_REUNIONES AS
+
+    -- Agenda una reunión mensual para un grupo/libro, validando hora, moderador
+    -- y conflictos de horario.
+    PROCEDURE agendar_reunion (
+        pi_id_club       IN NUMBER,
+        pi_id_grupo      IN NUMBER,
+        pi_isbn          IN VARCHAR2,
+        pi_fecha_reunion IN DATE,
+        pi_hora_inicio   IN DATE,
+        pi_mod_id_lector IN NUMBER
+    );
+
+    -- Registra la asistencia (S) o inasistencia (N) de un miembro a una reunión.
+    -- Si es inasistencia, activa la evaluación de retiro automático por bimestre.
+    PROCEDURE registrar_asistencia (
+        pi_id_lector     IN NUMBER,
+        pi_id_club       IN NUMBER,
+        pi_id_grupo      IN NUMBER,
+        pi_fecha_reunion IN DATE,
+        pi_isbn          IN VARCHAR2,
+        pi_asistio       IN CHAR
+    );
+
+    -- Cierra la discusión de un libro en una reunión, registrando conclusiones
+    -- y valoración final (1–5). Solo aplica si la reunión ya fue realizada.
+    PROCEDURE cerrar_discusion (
+        pi_id_club       IN NUMBER,
+        pi_id_grupo      IN NUMBER,
+        pi_fecha_reunion IN DATE,
+        pi_isbn          IN VARCHAR2,
+        pi_conclusiones  IN VARCHAR2,
+        pi_valoracion    IN NUMBER
+    );
+
+END MJV_PKG_ADMIN_REUNIONES;
+/
+
+CREATE OR REPLACE PACKAGE BODY MJV_PKG_ADMIN_REUNIONES AS
+
+    PROCEDURE agendar_reunion (
+        pi_id_club       IN NUMBER,
+        pi_id_grupo      IN NUMBER,
+        pi_isbn          IN VARCHAR2,
+        pi_fecha_reunion IN DATE,
+        pi_hora_inicio   IN DATE,
+        pi_mod_id_lector IN NUMBER
+    ) IS
+    BEGIN
+        MJV_sp_agendar_reunion_mes(
+            pi_id_club       => pi_id_club,
+            pi_id_grupo      => pi_id_grupo,
+            pi_isbn          => pi_isbn,
+            pi_fecha_reunion => pi_fecha_reunion,
+            pi_hora_inicio   => pi_hora_inicio,
+            pi_mod_id_lector => pi_mod_id_lector
+        );
+    END agendar_reunion;
+
+    PROCEDURE registrar_asistencia (
+        pi_id_lector     IN NUMBER,
+        pi_id_club       IN NUMBER,
+        pi_id_grupo      IN NUMBER,
+        pi_fecha_reunion IN DATE,
+        pi_isbn          IN VARCHAR2,
+        pi_asistio       IN CHAR
+    ) IS
+    BEGIN
+        MJV_sp_registrar_asistencia_miembro(
+            pi_id_lector     => pi_id_lector,
+            pi_id_club       => pi_id_club,
+            pi_id_grupo      => pi_id_grupo,
+            pi_fecha_reunion => pi_fecha_reunion,
+            pi_isbn          => pi_isbn,
+            pi_asistio       => pi_asistio
+        );
+    END registrar_asistencia;
+
+    PROCEDURE cerrar_discusion (
+        pi_id_club       IN NUMBER,
+        pi_id_grupo      IN NUMBER,
+        pi_fecha_reunion IN DATE,
+        pi_isbn          IN VARCHAR2,
+        pi_conclusiones  IN VARCHAR2,
+        pi_valoracion    IN NUMBER
+    ) IS
+    BEGIN
+        MJV_sp_cerrar_discusion_reunion(
+            pi_id_club       => pi_id_club,
+            pi_id_grupo      => pi_id_grupo,
+            pi_fecha_reunion => pi_fecha_reunion,
+            pi_isbn          => pi_isbn,
+            pi_conclusiones  => pi_conclusiones,
+            pi_valoracion    => pi_valoracion
+        );
+    END cerrar_discusion;
+
+END MJV_PKG_ADMIN_REUNIONES;
+/
+
+-- Verificar compilación
+SELECT object_name, object_type, status
+  FROM user_objects
+ WHERE object_name IN ('MJV_PKG_ADMIN_CLUBES', 'MJV_PKG_ADMIN_REUNIONES')
+ ORDER BY object_type, object_name;
