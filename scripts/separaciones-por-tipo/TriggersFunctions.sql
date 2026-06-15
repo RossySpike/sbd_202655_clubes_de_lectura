@@ -872,3 +872,26 @@ BEGIN
     END IF;
 END MJV_tgr_retirar_por_inasistencia;
 /
+
+CREATE OR REPLACE TRIGGER MJV_tgr_un_grupo_por_club
+BEFORE INSERT ON MJV_g_lec
+FOR EACH ROW
+DECLARE
+    v_count NUMBER;
+BEGIN
+    SELECT COUNT(*)
+      INTO v_count
+      FROM MJV_g_lec
+     WHERE id_lector = :NEW.id_lector
+       AND id_club   = :NEW.id_club
+       AND fec_f     IS NULL;   -- activo en el grupo (no retirado)
+    IF v_count > 0 THEN
+        RAISE_APPLICATION_ERROR(
+            -20009,
+            'INTEGRIDAD: El lector ' || :NEW.id_lector
+            || ' ya está activo en un grupo de lectura del club ' || :NEW.id_club
+            || '. Un lector solo puede pertenecer a un grupo activo por club.'
+        );
+    END IF;
+END MJV_tgr_un_grupo_por_club;
+/
