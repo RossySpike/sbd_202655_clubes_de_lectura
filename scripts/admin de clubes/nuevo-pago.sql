@@ -40,7 +40,7 @@ BEGIN
     END;
 
     -- 5. Conversión y validación de monto mínimo
-    v_monto_usd := MJV_conversion_monetaria(pi_monto, pi_moneda, 'USD', pi_tasa);
+    v_monto_usd := MJV_conversion_monetaria(pi_monto, pi_moneda, pi_tasa);
 
     IF v_monto_usd < 100 THEN
         RAISE_APPLICATION_ERROR(
