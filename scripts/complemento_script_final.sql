@@ -871,6 +871,16 @@ BEGIN
         );
     END IF;
 
+     -- [REGLA] Las reuniones solo pueden agendarse de lunes a viernes
+    IF TO_CHAR(TRUNC(pi_fecha_reunion), 'D') IN ('1', '7') THEN
+        RAISE_APPLICATION_ERROR(
+            -20068,
+            'ERROR: No se pueden programar reuniones los fines de semana. '
+            || 'La fecha ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DD/MM/YYYY')
+            || ' corresponde a un ' || TO_CHAR(TRUNC(pi_fecha_reunion), 'DAY', 'NLS_DATE_LANGUAGE=SPANISH') || '.'
+        );
+    END IF;
+
     IF v_tipo_grupo = 'niños' AND TO_CHAR(pi_hora_inicio, 'HH24:MI') > '17:00' THEN
         RAISE_APPLICATION_ERROR(
             -20061,
@@ -962,6 +972,27 @@ BEGIN
             'Error: Ya existe una reunión programada para ese grupo, libro y fecha.'
         );
     END IF;
+
+        -- [REGLA] Máximo 3 reuniones por libro por grupo (sin haber cerrado discusión)
+    DECLARE
+        v_reuniones_libro NUMBER;
+    BEGIN
+        SELECT COUNT(*)
+          INTO v_reuniones_libro
+          FROM MJV_calendario_reunion_mes
+         WHERE id_club  = pi_id_club
+           AND id_grupo = pi_id_grupo
+           AND isbn     = TRIM(pi_isbn)
+           AND ultima   = 'N';   -- Reuniones ya realizadas y aún no cerradas
+        IF v_reuniones_libro >= 3 THEN
+            RAISE_APPLICATION_ERROR(
+                -20069,
+                'ERROR: El grupo ' || pi_id_grupo || ' ya tiene 3 reuniones registradas '
+                || 'para el libro ' || pi_isbn || ' sin haber cerrado la discusión. '
+                || 'Debe cerrar la discusión antes de agendar más reuniones de este libro.'
+            );
+        END IF;
+    END;
 
     INSERT INTO MJV_calendario_reunion_mes (
         id_club, id_grupo, fecha, isbn,
