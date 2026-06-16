@@ -6,7 +6,26 @@ PROMPT
 PROMPT --- REGISTRAR PAGO DE MEMBRESIA ---
 PROMPT
 
-ACCEPT p_id_lector NUMBER PROMPT "ID lector                              : "
+-- -----------------------------------------------------------------------------
+-- REFERENCIA: Lectores activos con su ID y club (solo clubes con cuota)
+-- -----------------------------------------------------------------------------
+PROMPT
+PROMPT *** LECTORES ACTIVOS EN CLUBES CON CUOTA (solvencia actual) ***
+PROMPT
+
+SELECT rs.id_lector,
+       rs.nombre_completo,
+       rs.nombre_club,
+       rs.deuda_pendiente_usd,
+       rs.estatus_solvencia
+FROM   MJV_vw_reporte_solvencia rs
+ORDER  BY rs.nombre_club, rs.id_lector;
+
+PROMPT
+PROMPT *** INGRESE LOS DATOS DEL PAGO ***
+PROMPT
+
+ACCEPT p_id_lector NUMBER PROMPT "ID lector (ver tabla)                  : "
 ACCEPT p_club      CHAR   PROMPT "Nombre exacto del club                 : "
 ACCEPT p_monto     NUMBER PROMPT "Monto pagado                           : "
 ACCEPT p_moneda    CHAR   PROMPT "Codigo moneda  USD / VES / COP ...     : "
@@ -28,5 +47,25 @@ EXCEPTION
         DBMS_OUTPUT.PUT_LINE(SQLERRM);
 END;
 /
+
+-- -----------------------------------------------------------------------------
+-- RESULTADO: Solvencia actualizada del lector tras el pago
+-- -----------------------------------------------------------------------------
+PROMPT
+PROMPT *** RESULTADO — SOLVENCIA ACTUALIZADA DEL LECTOR ***
+PROMPT
+
+SELECT rs.id_lector,
+       rs.nombre_completo,
+       rs.doc_identidad,
+       rs.nombre_club,
+       rs.fecha_ingreso,
+       rs.anos_iniciados,
+       rs.deuda_total_usd,
+       rs.total_pagado_usd,
+       rs.deuda_pendiente_usd,
+       rs.estatus_solvencia
+FROM   MJV_vw_reporte_solvencia rs
+WHERE  rs.id_lector = &p_id_lector;
 
 UNDEF p_id_lector p_club p_monto p_moneda p_tasa

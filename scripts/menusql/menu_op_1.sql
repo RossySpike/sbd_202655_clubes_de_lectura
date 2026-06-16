@@ -6,6 +6,58 @@ PROMPT
 PROMPT --- INSCRIBIR NUEVO MIEMBRO ---
 PROMPT
 
+-- -----------------------------------------------------------------------------
+-- REFERENCIA: Lectores existentes (utiles si va a asignar un representante)
+-- -----------------------------------------------------------------------------
+PROMPT
+PROMPT *** LECTORES REGISTRADOS (para asignar representante si aplica) ***
+PROMPT
+
+SELECT l.id_lector,
+       l.p_nombre || ' ' || l.p_apellido AS nombre,
+       l.doc_identidad
+FROM   MJV_lector l
+ORDER  BY l.id_lector;
+
+-- -----------------------------------------------------------------------------
+-- REFERENCIA: Representantes externos registrados
+-- -----------------------------------------------------------------------------
+PROMPT
+PROMPT *** REPRESENTANTES EXTERNOS REGISTRADOS ***
+PROMPT
+
+SELECT r.id_representante,
+       r.p_nombre || ' ' || r.p_apellido AS nombre,
+       r.doc_identidad
+FROM   MJV_representante r
+ORDER  BY r.id_representante;
+
+-- -----------------------------------------------------------------------------
+-- REFERENCIA: Clubes disponibles
+-- -----------------------------------------------------------------------------
+PROMPT
+PROMPT *** CLUBES DISPONIBLES ***
+PROMPT
+
+SELECT c.id_club, c.nombre_club
+FROM   MJV_club c
+ORDER  BY c.id_club;
+
+-- -----------------------------------------------------------------------------
+-- REFERENCIA: Libros disponibles para preferencias (ISBN + Titulo)
+-- -----------------------------------------------------------------------------
+PROMPT
+PROMPT *** CATALOGO DE LIBROS (para elegir preferencias) ***
+PROMPT
+
+SELECT li.isbn, li.titulo
+FROM   MJV_libro li
+ORDER  BY li.titulo;
+
+PROMPT
+PROMPT *** INGRESE LOS DATOS DEL NUEVO MIEMBRO ***
+PROMPT
+
 ACCEPT p_p_nombre   CHAR   PROMPT "Primer nombre                          : "
 ACCEPT p_s_nombre   CHAR   PROMPT "Segundo nombre  (Enter si no tiene)    : "
 ACCEPT p_p_apellido CHAR   PROMPT "Primer apellido                        : "
@@ -16,10 +68,10 @@ ACCEPT p_email      CHAR   PROMPT "Email                                  : "
 ACCEPT p_genero     CHAR   PROMPT "Genero  M / F                          : "
 ACCEPT p_fecha_nac  CHAR   PROMPT "Fecha nacimiento  DD/MM/YYYY           : "
 ACCEPT p_pais_nac   CHAR   PROMPT "Nombre pais de nacimiento              : "
-ACCEPT p_club       CHAR   PROMPT "Nombre exacto del club                 : "
-ACCEPT p_pref1      CHAR   PROMPT "Titulo libro preferencia 1             : "
-ACCEPT p_pref2      CHAR   PROMPT "Titulo libro preferencia 2             : "
-ACCEPT p_pref3      CHAR   PROMPT "Titulo libro preferencia 3             : "
+ACCEPT p_club       CHAR   PROMPT "Nombre exacto del club (ver tabla)     : "
+ACCEPT p_pref1      CHAR   PROMPT "Titulo libro preferencia 1 (ver tabla) : "
+ACCEPT p_pref2      CHAR   PROMPT "Titulo libro preferencia 2 (ver tabla) : "
+ACCEPT p_pref3      CHAR   PROMPT "Titulo libro preferencia 3 (ver tabla) : "
 ACCEPT p_id_rep     CHAR   PROMPT "ID representante  (Enter = sin rep.)   : "
 ACCEPT p_tipo_rep   CHAR   PROMPT "Tipo rep.  LECTOR / EXTERNO / NULL     : "
 
@@ -59,6 +111,33 @@ EXCEPTION
         DBMS_OUTPUT.PUT_LINE(SQLERRM);
 END;
 /
+
+-- -----------------------------------------------------------------------------
+-- RESULTADO: Ficha del miembro recien inscrito
+-- -----------------------------------------------------------------------------
+PROMPT
+PROMPT *** RESULTADO — MIEMBRO INSCRITO ***
+PROMPT
+
+SELECT m.nombre_club,
+       m.cedula,
+       m.nombre_completo,
+       m.fecha_ingreso,
+       m.id_grupo
+FROM   MJV_vw_miembros_activos m
+WHERE  m.cedula = TRIM('&p_doc');
+
+PROMPT
+PROMPT *** GRUPOS ACTIVOS TRAS LA INSCRIPCION (ocupacion actualizada) ***
+PROMPT
+
+SELECT og.id_club,
+       og.nombre_club,
+       og.id_grupo,
+       og.tipo_grupo,
+       og.miembros_activos
+FROM   MJV_vw_ocupacion_grupos og
+WHERE  UPPER(og.nombre_club) = UPPER(TRIM('&p_club'));
 
 UNDEF p_p_nombre p_s_nombre p_p_apellido p_s_apellido p_doc
 UNDEF p_telefono p_email p_genero p_fecha_nac p_pais_nac

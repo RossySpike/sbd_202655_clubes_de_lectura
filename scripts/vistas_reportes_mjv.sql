@@ -300,16 +300,25 @@ ORDER BY
 
 -- =============================================================================
 -- REPORTE 4 — FINANCIERO Y DE CRECIMIENTO ANUAL DE CLUBES
--- Vista única: todos los clubes con % de crecimiento de miembros y económico
---              comparado año a año.
+-- Vista enriquecida: todos los clubes con % de crecimiento de miembros y
+-- económico comparado año a año.
+--
+-- Parámetros Jaspersoft disponibles (filtrar en WHERE del JRXML):
+--   $P{id_club}      NUMBER   — un club específico (NULL = todos)
+--   $P{id_pais}      NUMBER   — filtrar por país  (NULL = todos)
+--   $P{tipo_club}    VARCHAR2 — 'Independiente' | 'Institucional' | NULL = todos
+--   $P{anio_desde}   NUMBER   — año mínimo del rango  (NULL = sin límite inferior)
+--   $P{anio_hasta}   NUMBER   — año máximo del rango  (NULL = sin límite superior)
 --
 -- Lógica:
 --   • "Año de operación" = año calendario (EXTRACT(YEAR FROM fecha_i)).
---   • Miembros por año = cantidad de nuevas membresías iniciadas ese año.
---   • Ingresos por año = SUM de pagos de membresía (equivalente 100 USD cada uno)
---     registrados ese año en ese club.
+--   • Nuevos miembros por año = altas de membresía iniciadas ese año en ese club.
+--   • Miembros acumulados    = total de lectores con membresía activa al cierre del año.
+--   • Retiros por año        = bajas de membresía con fecha_f en ese año.
+--   • Ingresos por año       = SUM de pagos de membresía registrados ese año
+--                              (solo clubes con cuota_anual = 'S').
 --   • LAG() calcula el valor del año anterior dentro del mismo club.
---   • Fórmula de crecimiento: ((Actual - Anterior) / NULLIF(Anterior, 0)) * 100
+--   • Fórmula de crecimiento: ((Actual − Anterior) / NULLIF(Anterior, 0)) * 100
 --     NULLIF evita ORA-01476 (división por cero).
 -- =============================================================================
 CREATE OR REPLACE VIEW MJV_vw_r4_crecimiento_anual AS
@@ -326,13 +335,51 @@ miembros_por_anio AS (
         hm.id_club,
         EXTRACT(YEAR FROM hm.fecha_i)
 ),
--- CTE 2: Ingresos por membresías por club y año de pago
+-- CTE 2: Retiros por club y año de baja
+retiros_por_anio AS (
+    SELECT
+        hm.id_club,
+        EXTRACT(YEAR FROM hm.fecha_f)  AS anio,
+        COUNT(*)                        AS retiros
+    FROM
+        MJV_historia_membresia hm
+    WHERE
+        hm.fecha_f IS NOT NULL
+        AND hm.estatus = 'retirado'
+    GROUP BY
+        hm.id_club,
+        EXTRACT(YEAR FROM hm.fecha_f)
+),
+-- CTE 3: Miembros acumulados al cierre de cada año
+--         (membresías activas al 31/12 del año, sin importar si luego se retiraron)
+acumulado_por_anio AS (
+    SELECT
+        hm.id_club,
+        anios.anio,
+        COUNT(*) AS miembros_acumulados
+    FROM
+        MJV_historia_membresia hm
+        JOIN (
+            SELECT DISTINCT EXTRACT(YEAR FROM fecha_i) AS anio
+            FROM MJV_historia_membresia
+            UNION
+            SELECT DISTINCT EXTRACT(YEAR FROM fecha_pago) AS anio
+            FROM MJV_pago_membresia
+        ) anios ON EXTRACT(YEAR FROM hm.fecha_i) <= anios.anio
+               AND (hm.fecha_f IS NULL
+                    OR EXTRACT(YEAR FROM hm.fecha_f) >= anios.anio)
+    GROUP BY
+        hm.id_club,
+        anios.anio
+),
+-- CTE 4: Ingresos por membresías por club y año de pago
 --         Solo se cuentan pagos de clubes que cobran cuota (cuota_anual = 'S')
 ingresos_por_anio AS (
     SELECT
         pm.id_club,
         EXTRACT(YEAR FROM pm.fecha_pago) AS anio,
-        SUM(pm.monto)                     AS ingresos_usd
+        SUM(pm.monto)                     AS ingresos_usd,
+        COUNT(*)                          AS cantidad_pagos
     FROM
         MJV_pago_membresia pm
         JOIN MJV_club c ON c.id_club = pm.id_club
@@ -342,65 +389,136 @@ ingresos_por_anio AS (
         pm.id_club,
         EXTRACT(YEAR FROM pm.fecha_pago)
 ),
--- CTE 3: Unión de años existentes por club (puede que un año haya miembros pero
---         sin pagos aún, o viceversa)
+-- CTE 5: Unión de todos los años con actividad por club
 anios_por_club AS (
     SELECT id_club, anio FROM miembros_por_anio
     UNION
     SELECT id_club, anio FROM ingresos_por_anio
+    UNION
+    SELECT id_club, anio FROM retiros_por_anio
 ),
--- CTE 4: Datos consolidados por club y año, con LAG para obtener año anterior
+-- CTE 6: Datos consolidados por club y año, con LAG para obtener año anterior
 consolidado AS (
     SELECT
         ac.id_club,
         ac.anio,
-        NVL(m.nuevos_miembros, 0)  AS nuevos_miembros,
-        NVL(i.ingresos_usd, 0)     AS ingresos_usd,
-        -- Año anterior: LAG particionado por club, ordenado por año
+        NVL(m.nuevos_miembros, 0)       AS nuevos_miembros,
+        NVL(r.retiros, 0)               AS retiros,
+        NVL(a.miembros_acumulados, 0)   AS miembros_acumulados,
+        NVL(i.ingresos_usd, 0)          AS ingresos_usd,
+        NVL(i.cantidad_pagos, 0)        AS cantidad_pagos,
+        -- Valores del año anterior (LAG particionado por club, ordenado por año)
         LAG(NVL(m.nuevos_miembros, 0))
             OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS miembros_anio_anterior,
+        LAG(NVL(a.miembros_acumulados, 0))
+            OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS acumulados_anio_anterior,
         LAG(NVL(i.ingresos_usd, 0))
             OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS ingresos_anio_anterior
     FROM
-        anios_por_club     ac
-        LEFT JOIN miembros_por_anio m ON m.id_club = ac.id_club AND m.anio = ac.anio
-        LEFT JOIN ingresos_por_anio i ON i.id_club = ac.id_club AND i.anio = ac.anio
+        anios_por_club          ac
+        LEFT JOIN miembros_por_anio  m ON m.id_club = ac.id_club AND m.anio = ac.anio
+        LEFT JOIN retiros_por_anio   r ON r.id_club = ac.id_club AND r.anio = ac.anio
+        LEFT JOIN acumulado_por_anio a ON a.id_club = ac.id_club AND a.anio = ac.anio
+        LEFT JOIN ingresos_por_anio  i ON i.id_club = ac.id_club AND i.anio = ac.anio
 )
 -- Consulta final: une con datos del club y calcula porcentajes
 SELECT
     c.id_club,
     c.nombre_club,
+    c.id_pais,
     p.nombre_pais,
     ci.nombre_ciudad,
+    c.cod_postal,
     CASE c.cuota_anual WHEN 'S' THEN 'Independiente' ELSE 'Institucional' END AS tipo_club,
+    c.cuota_anual,
     co.anio,
     co.nuevos_miembros,
+    co.retiros,
+    -- Saldo neto de miembros en el año (altas − bajas)
+    co.nuevos_miembros - co.retiros                    AS saldo_neto_miembros,
+    co.miembros_acumulados,
     co.ingresos_usd,
+    co.cantidad_pagos,
     co.miembros_anio_anterior,
+    co.acumulados_anio_anterior,
     co.ingresos_anio_anterior,
-    -- % Crecimiento de miembros vs. año anterior
-    -- NULLIF(miembros_anio_anterior, 0) evita ORA-01476
+    -- % Crecimiento de nuevas altas vs. año anterior
     ROUND(
         ((co.nuevos_miembros - co.miembros_anio_anterior)
          / NULLIF(co.miembros_anio_anterior, 0)) * 100,
         2
     ) AS pct_crecimiento_miembros,
+    -- % Crecimiento de miembros acumulados vs. año anterior
+    ROUND(
+        ((co.miembros_acumulados - co.acumulados_anio_anterior)
+         / NULLIF(co.acumulados_anio_anterior, 0)) * 100,
+        2
+    ) AS pct_crecimiento_acumulados,
     -- % Crecimiento económico vs. año anterior
     ROUND(
         ((co.ingresos_usd - co.ingresos_anio_anterior)
          / NULLIF(co.ingresos_anio_anterior, 0)) * 100,
         2
-    ) AS pct_crecimiento_economico
+    ) AS pct_crecimiento_economico,
+    -- Ingreso promedio por pago en el año (referencia de ticket promedio)
+    ROUND(
+        co.ingresos_usd / NULLIF(co.cantidad_pagos, 0),
+        2
+    ) AS ingreso_promedio_por_pago
 FROM
     consolidado       co
     JOIN MJV_club    c  ON c.id_club  = co.id_club
     JOIN MJV_pais    p  ON p.id_pais  = c.id_pais
     JOIN MJV_ciudad  ci ON ci.id_pais = c.id_pais AND ci.id_ciudad = c.id_ciudad
 ORDER BY
-    -- Mayor crecimiento de miembros primero; NULLs al final (primer año sin comparativo)
+    co.anio DESC,
     pct_crecimiento_miembros DESC NULLS LAST,
-    pct_crecimiento_economico DESC NULLS LAST,
-    co.anio DESC;
+    pct_crecimiento_economico DESC NULLS LAST;
+
+
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R04
+-- Query JRXML sugerido:
+--   SELECT * FROM MJV_vw_r4_consolidado
+--    WHERE ($P{id_club}   IS NULL OR id_club   = $P{id_club})
+--      AND ($P{id_pais}   IS NULL OR id_pais   = $P{id_pais})
+--      AND ($P{tipo_club} IS NULL OR tipo_club  = $P{tipo_club})
+--      AND ($P{anio_desde} IS NULL OR anio     >= $P{anio_desde})
+--      AND ($P{anio_hasta} IS NULL OR anio     <= $P{anio_hasta})
+--
+-- Parámetros Jaspersoft:
+--   id_club    (NUMBER)  — club específico; NULL = todos
+--   id_pais    (NUMBER)  — país específico; NULL = todos
+--   tipo_club  (VARCHAR2)— 'Independiente' | 'Institucional'; NULL = ambos
+--   anio_desde (NUMBER)  — año inicial del rango; NULL = sin límite inferior
+--   anio_hasta (NUMBER)  — año final del rango;   NULL = sin límite superior
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_r4_consolidado AS
+SELECT
+    id_club,
+    nombre_club,
+    id_pais,
+    nombre_pais,
+    nombre_ciudad,
+    cod_postal,
+    tipo_club,
+    cuota_anual,
+    anio,
+    nuevos_miembros,
+    retiros,
+    saldo_neto_miembros,
+    miembros_acumulados,
+    ingresos_usd,
+    cantidad_pagos,
+    ingreso_promedio_por_pago,
+    miembros_anio_anterior,
+    acumulados_anio_anterior,
+    ingresos_anio_anterior,
+    pct_crecimiento_miembros,
+    pct_crecimiento_acumulados,
+    pct_crecimiento_economico
+FROM
+    MJV_vw_r4_crecimiento_anual;
 
 
 -- =============================================================================

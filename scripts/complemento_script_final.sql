@@ -1618,3 +1618,663 @@ ORDER BY
     pct_crecimiento_miembros DESC NULLS LAST,
     pct_crecimiento_economico DESC NULLS LAST;
 /
+
+-- =============================================================================
+-- PROYECTO: Sistema de Gestión de Clubes de Lectura
+-- ARCHIVO:  vistas_reportes_mjv.sql
+-- AUTOR:    MJV
+-- FECHA:    2026-06-14
+-- MOTOR:    Oracle 19c
+--
+-- PROPÓSITO:
+--   Vistas de soporte para los 4 reportes de Jaspersoft Studio.
+--   Estrategia anti-producto-cartesiano: cada relación 1-N se separa en una
+--   "Vista Principal" (cabecera) y "Vista(s) de Detalle".
+--
+-- CONVENCIÓN DE NOMBRES:  MJV_vw_<reporte>_<rol>
+-- CONVENCIÓN DE NOMBRES:  p_nombre || ' ' || p_apellido || ' ' || s_apellido
+--                         (con NVL donde s_apellido puede ser NULL)
+-- =============================================================================
+
+
+-- =============================================================================
+-- REPORTE 1 — FICHA COMPLETA DE UN MIEMBRO
+-- Parámetro Jaspersoft: $P{id_lector}
+--
+--   VW A — Cabecera: datos personales del lector
+--   VW B — Detalle historial en cada club (1 fila por membresía)
+--   VW C — Detalle 3 libros preferidos (ordenados por prioridad)
+--   VW D — Detalle libros analizados (discusiones cerradas con valoración)
+-- =============================================================================
+
+-- ----------------------------------------------------------------------------
+-- VW A: Datos personales del lector
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW MJV_vw_r1_ficha_miembro AS
+SELECT
+    l.id_lector,
+    l.p_nombre || ' ' || l.p_apellido || ' ' || NVL(l.s_apellido, '') AS nombre_completo,
+    l.doc_identidad,
+    l.telefono,
+    l.email,
+    CASE l.genero WHEN 'M' THEN 'Masculino' WHEN 'F' THEN 'Femenino' END AS genero,
+    l.fecha_nac,
+    -- Edad calculada en años completos al día de hoy
+    TRUNC(MONTHS_BETWEEN(SYSDATE, l.fecha_nac) / 12) AS edad,
+    p.nombre_pais      AS pais_nacimiento,
+    p.nacionalidad
+FROM
+    MJV_lector l
+    JOIN MJV_pais p ON p.id_pais = l.id_pais_nac;
+
+-- ----------------------------------------------------------------------------
+-- VW B: Historial completo de membresías del lector
+--       Una fila por período en cada club (activo o retirado)
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW MJV_vw_r1_historial_clubes AS
+SELECT
+    hm.id_lector,
+    c.id_club,
+    c.nombre_club,
+    p.nombre_pais   AS pais_club,
+    ci.nombre_ciudad AS ciudad_club,
+    hm.fecha_i      AS fecha_ingreso,
+    hm.fecha_f      AS fecha_retiro,
+    hm.estatus,
+    hm.motivo_retiro
+FROM
+    MJV_historia_membresia hm
+    JOIN MJV_club   c  ON c.id_club  = hm.id_club
+    JOIN MJV_pais   p  ON p.id_pais  = c.id_pais
+    JOIN MJV_ciudad ci ON ci.id_pais = c.id_pais AND ci.id_ciudad = c.id_ciudad
+ORDER BY
+    hm.id_lector,
+    hm.fecha_i DESC;
+
+-- ----------------------------------------------------------------------------
+-- VW C: Los 3 libros preferidos del lector, ordenados por prioridad
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW MJV_vw_r1_preferencias AS
+SELECT
+    po.id_lector,
+    po.prioridad,
+    lb.isbn,
+    lb.titulo,
+    -- Autores concatenados (puede ser coautoría)
+    LISTAGG(
+        NVL(a.p_nombre, a.nombre_ant_pseudonimo) || ' ' || NVL(a.p_apellido, ''),
+        ', '
+    ) WITHIN GROUP (ORDER BY a.id_autor) AS autores,
+    lb.genero,
+    lb.primera_edicion
+FROM
+    MJV_preferencia_obra po
+    JOIN MJV_libro      lb ON lb.isbn     = po.isbn
+    JOIN MJV_libro_autor la ON la.isbn     = lb.isbn
+    JOIN MJV_autor       a  ON a.id_autor  = la.id_autor
+GROUP BY
+    po.id_lector,
+    po.prioridad,
+    lb.isbn,
+    lb.titulo,
+    lb.genero,
+    lb.primera_edicion
+ORDER BY
+    po.id_lector,
+    po.prioridad;
+
+-- ----------------------------------------------------------------------------
+-- VW D: Libros analizados por el lector como moderador de reuniones cerradas
+--       (ultima = 'S' indica que el grupo ya terminó de analizar ese libro)
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW MJV_vw_r1_libros_analizados AS
+SELECT DISTINCT
+    crm.mod_id_lector                                      AS id_lector,
+    lb.isbn,
+    lb.titulo,
+    -- Autores concatenados
+    LISTAGG(
+        NVL(a.p_nombre, a.nombre_ant_pseudonimo) || ' ' || NVL(a.p_apellido, ''),
+        ', '
+    ) WITHIN GROUP (ORDER BY a.id_autor)                   AS autores,
+    crm.valoracion,
+    crm.conclusiones,
+    c.nombre_club,
+    g.tipo_grupo,
+    crm.fecha                                              AS fecha_reunion
+FROM
+    MJV_calendario_reunion_mes crm
+    JOIN MJV_libro      lb ON lb.isbn     = crm.isbn
+    JOIN MJV_libro_autor la ON la.isbn    = lb.isbn
+    JOIN MJV_autor       a  ON a.id_autor = la.id_autor
+    JOIN MJV_club        c  ON c.id_club  = crm.id_club
+    JOIN MJV_grupo       g  ON g.id_grupo = crm.id_grupo AND g.id_club = crm.id_club
+WHERE
+    crm.ultima = 'S'       -- Solo reuniones de cierre con conclusiones y valoración
+GROUP BY
+    crm.mod_id_lector,
+    lb.isbn,
+    lb.titulo,
+    crm.valoracion,
+    crm.conclusiones,
+    c.nombre_club,
+    g.tipo_grupo,
+    crm.fecha;
+
+
+-- =============================================================================
+-- REPORTE 2 — FICHA DE UN CLUB
+-- Parámetro Jaspersoft: $P{id_club}
+--
+--   VW A — Cabecera: datos del club + conteo de grupos por tipo
+--   VW B — Detalle libros analizados en el club, ordenados por valoración promedio
+-- =============================================================================
+
+-- ----------------------------------------------------------------------------
+-- VW A: Datos del club con conteo de grupos por tipo
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW MJV_vw_r2_ficha_club AS
+SELECT
+    c.id_club,
+    c.nombre_club,
+    p.nombre_pais,
+    ci.nombre_ciudad,
+    c.cod_postal,
+    CASE c.cuota_anual WHEN 'S' THEN 'Independiente (cobra cuota)' ELSE 'Institucional (sin cuota)' END AS tipo_club,
+    -- Cantidad de grupos por tipo (subconsulta escalar por tipo)
+    NVL(
+        (SELECT COUNT(*) FROM MJV_grupo g2
+          WHERE g2.id_club = c.id_club AND g2.tipo_grupo = 'adultos'), 0
+    ) AS grupos_adultos,
+    NVL(
+        (SELECT COUNT(*) FROM MJV_grupo g2
+          WHERE g2.id_club = c.id_club AND g2.tipo_grupo = 'jovenes'), 0
+    ) AS grupos_jovenes,
+    NVL(
+        (SELECT COUNT(*) FROM MJV_grupo g2
+          WHERE g2.id_club = c.id_club AND g2.tipo_grupo = 'niños'), 0
+    ) AS grupos_ninos,
+    (SELECT COUNT(*) FROM MJV_grupo g2 WHERE g2.id_club = c.id_club) AS total_grupos
+FROM
+    MJV_club    c
+    JOIN MJV_pais   p  ON p.id_pais  = c.id_pais
+    JOIN MJV_ciudad ci ON ci.id_pais = c.id_pais AND ci.id_ciudad = c.id_ciudad;
+
+-- ----------------------------------------------------------------------------
+-- VW B: Lista de libros analizados por el club, de mayor a menor valoración
+--       Valoración promedio calculada entre todas las sesiones de cierre
+--       del club para ese libro.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW MJV_vw_r2_libros_por_club AS
+SELECT
+    crm.id_club,
+    lb.isbn,
+    lb.titulo,
+    -- Autores concatenados
+    LISTAGG(
+        NVL(a.p_nombre, a.nombre_ant_pseudonimo) || ' ' || NVL(a.p_apellido, ''),
+        ', '
+    ) WITHIN GROUP (ORDER BY a.id_autor)         AS autores,
+    lb.genero,
+    ROUND(AVG(crm.valoracion), 2)                AS valoracion_promedio_club,
+    COUNT(DISTINCT crm.id_grupo)                 AS cantidad_grupos_que_lo_analizaron
+FROM
+    MJV_calendario_reunion_mes crm
+    JOIN MJV_libro      lb ON lb.isbn     = crm.isbn
+    JOIN MJV_libro_autor la ON la.isbn    = lb.isbn
+    JOIN MJV_autor       a  ON a.id_autor = la.id_autor
+WHERE
+    crm.ultima    = 'S'
+    AND crm.valoracion IS NOT NULL
+GROUP BY
+    crm.id_club,
+    lb.isbn,
+    lb.titulo,
+    lb.genero
+ORDER BY
+    crm.id_club,
+    valoracion_promedio_club DESC;
+
+
+-- =============================================================================
+-- REPORTE 3 — FICHA DE UN LIBRO
+-- Parámetro Jaspersoft: $P{isbn}
+--
+--   VW A — Cabecera: datos del libro + valoración global promedio (todos los clubes)
+--   VW B — Detalle de clubes y grupos que lo analizaron, con sus conclusiones
+-- =============================================================================
+
+-- ----------------------------------------------------------------------------
+-- VW A: Datos del libro y su valoración global
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW MJV_vw_r3_ficha_libro AS
+SELECT
+    lb.isbn,
+    lb.titulo,
+    lb.tipo_narrativa,
+    lb.sinopsis,
+    lb.genero,
+    lb.primera_edicion,
+    lb.total_paginas,
+    p.nombre_pais          AS pais_origen,
+    -- Autores concatenados (puede ser coautoría)
+    LISTAGG(
+        NVL(a.p_nombre, a.nombre_ant_pseudonimo) || ' ' || NVL(a.p_apellido, ''),
+        ', '
+    ) WITHIN GROUP (ORDER BY a.id_autor) AS autores,
+    -- Valoración global: promedio de TODAS las sesiones de cierre de TODOS los clubes
+    ROUND(
+        (SELECT AVG(crm2.valoracion)
+           FROM MJV_calendario_reunion_mes crm2
+          WHERE crm2.isbn   = lb.isbn
+            AND crm2.ultima = 'S'
+            AND crm2.valoracion IS NOT NULL),
+        2
+    ) AS valoracion_global
+FROM
+    MJV_libro      lb
+    JOIN MJV_pais       p  ON p.id_pais   = lb.id_pais
+    JOIN MJV_libro_autor la ON la.isbn    = lb.isbn
+    JOIN MJV_autor       a  ON a.id_autor = la.id_autor
+GROUP BY
+    lb.isbn,
+    lb.titulo,
+    lb.tipo_narrativa,
+    lb.sinopsis,
+    lb.genero,
+    lb.primera_edicion,
+    lb.total_paginas,
+    p.nombre_pais;
+
+-- ----------------------------------------------------------------------------
+-- VW B: Lista de grupos que analizaron el libro con las conclusiones de cierre
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW MJV_vw_r3_analisis_por_grupo AS
+SELECT
+    crm.isbn,
+    c.id_club,
+    c.nombre_club,
+    p.nombre_pais    AS pais_club,
+    ci.nombre_ciudad AS ciudad_club,
+    g.id_grupo,
+    g.tipo_grupo,
+    crm.valoracion,
+    crm.conclusiones,
+    crm.fecha        AS fecha_cierre,
+    -- Moderador del cierre
+    l.p_nombre || ' ' || l.p_apellido || ' ' || NVL(l.s_apellido, '') AS nombre_moderador
+FROM
+    MJV_calendario_reunion_mes crm
+    JOIN MJV_club    c  ON c.id_club   = crm.id_club
+    JOIN MJV_pais    p  ON p.id_pais   = c.id_pais
+    JOIN MJV_ciudad  ci ON ci.id_pais  = c.id_pais  AND ci.id_ciudad = c.id_ciudad
+    JOIN MJV_grupo   g  ON g.id_grupo  = crm.id_grupo AND g.id_club  = crm.id_club
+    JOIN MJV_lector  l  ON l.id_lector = crm.mod_id_lector
+WHERE
+    crm.ultima     = 'S'
+    AND crm.valoracion IS NOT NULL
+ORDER BY
+    crm.isbn,
+    crm.valoracion DESC,
+    crm.fecha DESC;
+
+
+-- =============================================================================
+-- REPORTE 4 — FINANCIERO Y DE CRECIMIENTO ANUAL DE CLUBES
+-- Vista enriquecida: todos los clubes con % de crecimiento de miembros y
+-- económico comparado año a año.
+--
+-- Parámetros Jaspersoft disponibles (filtrar en WHERE del JRXML):
+--   $P{id_club}      NUMBER   — un club específico (NULL = todos)
+--   $P{id_pais}      NUMBER   — filtrar por país  (NULL = todos)
+--   $P{tipo_club}    VARCHAR2 — 'Independiente' | 'Institucional' | NULL = todos
+--   $P{anio_desde}   NUMBER   — año mínimo del rango  (NULL = sin límite inferior)
+--   $P{anio_hasta}   NUMBER   — año máximo del rango  (NULL = sin límite superior)
+--
+-- Lógica:
+--   • "Año de operación" = año calendario (EXTRACT(YEAR FROM fecha_i)).
+--   • Nuevos miembros por año = altas de membresía iniciadas ese año en ese club.
+--   • Miembros acumulados    = total de lectores con membresía activa al cierre del año.
+--   • Retiros por año        = bajas de membresía con fecha_f en ese año.
+--   • Ingresos por año       = SUM de pagos de membresía registrados ese año
+--                              (solo clubes con cuota_anual = 'S').
+--   • LAG() calcula el valor del año anterior dentro del mismo club.
+--   • Fórmula de crecimiento: ((Actual − Anterior) / NULLIF(Anterior, 0)) * 100
+--     NULLIF evita ORA-01476 (división por cero).
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_r4_crecimiento_anual AS
+WITH
+-- CTE 1: Nuevas membresías por club y año de ingreso
+miembros_por_anio AS (
+    SELECT
+        hm.id_club,
+        EXTRACT(YEAR FROM hm.fecha_i)  AS anio,
+        COUNT(*)                        AS nuevos_miembros
+    FROM
+        MJV_historia_membresia hm
+    GROUP BY
+        hm.id_club,
+        EXTRACT(YEAR FROM hm.fecha_i)
+),
+-- CTE 2: Retiros por club y año de baja
+retiros_por_anio AS (
+    SELECT
+        hm.id_club,
+        EXTRACT(YEAR FROM hm.fecha_f)  AS anio,
+        COUNT(*)                        AS retiros
+    FROM
+        MJV_historia_membresia hm
+    WHERE
+        hm.fecha_f IS NOT NULL
+        AND hm.estatus = 'retirado'
+    GROUP BY
+        hm.id_club,
+        EXTRACT(YEAR FROM hm.fecha_f)
+),
+-- CTE 3: Miembros acumulados al cierre de cada año
+--         (membresías activas al 31/12 del año, sin importar si luego se retiraron)
+acumulado_por_anio AS (
+    SELECT
+        hm.id_club,
+        anios.anio,
+        COUNT(*) AS miembros_acumulados
+    FROM
+        MJV_historia_membresia hm
+        JOIN (
+            SELECT DISTINCT EXTRACT(YEAR FROM fecha_i) AS anio
+            FROM MJV_historia_membresia
+            UNION
+            SELECT DISTINCT EXTRACT(YEAR FROM fecha_pago) AS anio
+            FROM MJV_pago_membresia
+        ) anios ON EXTRACT(YEAR FROM hm.fecha_i) <= anios.anio
+               AND (hm.fecha_f IS NULL
+                    OR EXTRACT(YEAR FROM hm.fecha_f) >= anios.anio)
+    GROUP BY
+        hm.id_club,
+        anios.anio
+),
+-- CTE 4: Ingresos por membresías por club y año de pago
+--         Solo se cuentan pagos de clubes que cobran cuota (cuota_anual = 'S')
+ingresos_por_anio AS (
+    SELECT
+        pm.id_club,
+        EXTRACT(YEAR FROM pm.fecha_pago) AS anio,
+        SUM(pm.monto)                     AS ingresos_usd,
+        COUNT(*)                          AS cantidad_pagos
+    FROM
+        MJV_pago_membresia pm
+        JOIN MJV_club c ON c.id_club = pm.id_club
+    WHERE
+        c.cuota_anual = 'S'
+    GROUP BY
+        pm.id_club,
+        EXTRACT(YEAR FROM pm.fecha_pago)
+),
+-- CTE 5: Unión de todos los años con actividad por club
+anios_por_club AS (
+    SELECT id_club, anio FROM miembros_por_anio
+    UNION
+    SELECT id_club, anio FROM ingresos_por_anio
+    UNION
+    SELECT id_club, anio FROM retiros_por_anio
+),
+-- CTE 6: Datos consolidados por club y año, con LAG para obtener año anterior
+consolidado AS (
+    SELECT
+        ac.id_club,
+        ac.anio,
+        NVL(m.nuevos_miembros, 0)       AS nuevos_miembros,
+        NVL(r.retiros, 0)               AS retiros,
+        NVL(a.miembros_acumulados, 0)   AS miembros_acumulados,
+        NVL(i.ingresos_usd, 0)          AS ingresos_usd,
+        NVL(i.cantidad_pagos, 0)        AS cantidad_pagos,
+        -- Valores del año anterior (LAG particionado por club, ordenado por año)
+        LAG(NVL(m.nuevos_miembros, 0))
+            OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS miembros_anio_anterior,
+        LAG(NVL(a.miembros_acumulados, 0))
+            OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS acumulados_anio_anterior,
+        LAG(NVL(i.ingresos_usd, 0))
+            OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS ingresos_anio_anterior
+    FROM
+        anios_por_club          ac
+        LEFT JOIN miembros_por_anio  m ON m.id_club = ac.id_club AND m.anio = ac.anio
+        LEFT JOIN retiros_por_anio   r ON r.id_club = ac.id_club AND r.anio = ac.anio
+        LEFT JOIN acumulado_por_anio a ON a.id_club = ac.id_club AND a.anio = ac.anio
+        LEFT JOIN ingresos_por_anio  i ON i.id_club = ac.id_club AND i.anio = ac.anio
+)
+-- Consulta final: une con datos del club y calcula porcentajes
+SELECT
+    c.id_club,
+    c.nombre_club,
+    c.id_pais,
+    p.nombre_pais,
+    ci.nombre_ciudad,
+    c.cod_postal,
+    CASE c.cuota_anual WHEN 'S' THEN 'Independiente' ELSE 'Institucional' END AS tipo_club,
+    c.cuota_anual,
+    co.anio,
+    co.nuevos_miembros,
+    co.retiros,
+    -- Saldo neto de miembros en el año (altas − bajas)
+    co.nuevos_miembros - co.retiros                    AS saldo_neto_miembros,
+    co.miembros_acumulados,
+    co.ingresos_usd,
+    co.cantidad_pagos,
+    co.miembros_anio_anterior,
+    co.acumulados_anio_anterior,
+    co.ingresos_anio_anterior,
+    -- % Crecimiento de nuevas altas vs. año anterior
+    ROUND(
+        ((co.nuevos_miembros - co.miembros_anio_anterior)
+         / NULLIF(co.miembros_anio_anterior, 0)) * 100,
+        2
+    ) AS pct_crecimiento_miembros,
+    -- % Crecimiento de miembros acumulados vs. año anterior
+    ROUND(
+        ((co.miembros_acumulados - co.acumulados_anio_anterior)
+         / NULLIF(co.acumulados_anio_anterior, 0)) * 100,
+        2
+    ) AS pct_crecimiento_acumulados,
+    -- % Crecimiento económico vs. año anterior
+    ROUND(
+        ((co.ingresos_usd - co.ingresos_anio_anterior)
+         / NULLIF(co.ingresos_anio_anterior, 0)) * 100,
+        2
+    ) AS pct_crecimiento_economico,
+    -- Ingreso promedio por pago en el año (referencia de ticket promedio)
+    ROUND(
+        co.ingresos_usd / NULLIF(co.cantidad_pagos, 0),
+        2
+    ) AS ingreso_promedio_por_pago
+FROM
+    consolidado       co
+    JOIN MJV_club    c  ON c.id_club  = co.id_club
+    JOIN MJV_pais    p  ON p.id_pais  = c.id_pais
+    JOIN MJV_ciudad  ci ON ci.id_pais = c.id_pais AND ci.id_ciudad = c.id_ciudad
+ORDER BY
+    co.anio DESC,
+    pct_crecimiento_miembros DESC NULLS LAST,
+    pct_crecimiento_economico DESC NULLS LAST;
+
+
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R04
+-- Query JRXML sugerido:
+--   SELECT * FROM MJV_vw_r4_consolidado
+--    WHERE ($P{id_club}   IS NULL OR id_club   = $P{id_club})
+--      AND ($P{id_pais}   IS NULL OR id_pais   = $P{id_pais})
+--      AND ($P{tipo_club} IS NULL OR tipo_club  = $P{tipo_club})
+--      AND ($P{anio_desde} IS NULL OR anio     >= $P{anio_desde})
+--      AND ($P{anio_hasta} IS NULL OR anio     <= $P{anio_hasta})
+--
+-- Parámetros Jaspersoft:
+--   id_club    (NUMBER)  — club específico; NULL = todos
+--   id_pais    (NUMBER)  — país específico; NULL = todos
+--   tipo_club  (VARCHAR2)— 'Independiente' | 'Institucional'; NULL = ambos
+--   anio_desde (NUMBER)  — año inicial del rango; NULL = sin límite inferior
+--   anio_hasta (NUMBER)  — año final del rango;   NULL = sin límite superior
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_r4_consolidado AS
+SELECT
+    id_club,
+    nombre_club,
+    id_pais,
+    nombre_pais,
+    nombre_ciudad,
+    cod_postal,
+    tipo_club,
+    cuota_anual,
+    anio,
+    nuevos_miembros,
+    retiros,
+    saldo_neto_miembros,
+    miembros_acumulados,
+    ingresos_usd,
+    cantidad_pagos,
+    ingreso_promedio_por_pago,
+    miembros_anio_anterior,
+    acumulados_anio_anterior,
+    ingresos_anio_anterior,
+    pct_crecimiento_miembros,
+    pct_crecimiento_acumulados,
+    pct_crecimiento_economico
+FROM
+    MJV_vw_r4_crecimiento_anual;
+
+
+-- =============================================================================
+-- FIN DEL ARCHIVO
+-- Compilación sugerida en SQL*Plus / SQLcl:
+--   @vistas_reportes_mjv.sql
+-- Verificación:
+--   SELECT object_name, status
+--     FROM user_objects
+--    WHERE object_type = 'VIEW'
+--      AND object_name LIKE 'MJV_VW_R%'
+--    ORDER BY object_name;
+-- =============================================================================
+
+
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R01
+-- Une las 4 vistas del reporte 1 en una sola consulta plana.
+-- El query del JRXML queda: SELECT * FROM MJV_vw_r1_consolidado WHERE id_lector = ?
+-- Estrategia: fm JOIN hc (membresías) LEFT JOIN la (libros analizados)
+--             Los favoritos van como subconsultas escalares (no generan producto cartesiano)
+-- =============================================================================
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R02
+-- Une MJV_vw_r2_ficha_club + MJV_vw_r2_libros_por_club en una sola vista plana.
+-- Query JRXML: SELECT * FROM MJV_vw_r2_consolidado WHERE id_club = ?
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_r2_consolidado AS
+SELECT
+    fc.id_club,
+    fc.nombre_club,
+    fc.nombre_pais,
+    fc.nombre_ciudad,
+    fc.cod_postal,
+    fc.tipo_club,
+    fc.grupos_adultos,
+    fc.grupos_jovenes,
+    fc.grupos_ninos,
+    fc.total_grupos,
+    lc.isbn,
+    lc.titulo                              AS titulo_libro,
+    lc.autores                             AS autores_libro,
+    lc.genero                              AS genero_libro,
+    lc.valoracion_promedio_club,
+    lc.cantidad_grupos_que_lo_analizaron
+FROM
+    MJV_vw_r2_ficha_club           fc
+    LEFT JOIN MJV_vw_r2_libros_por_club lc ON lc.id_club = fc.id_club
+ORDER BY
+    fc.id_club,
+    lc.valoracion_promedio_club DESC NULLS LAST,
+    lc.titulo ASC;
+
+
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R03
+-- Une MJV_vw_r3_ficha_libro + MJV_vw_r3_analisis_por_grupo en una sola vista plana.
+-- Query JRXML: SELECT * FROM MJV_vw_r3_consolidado WHERE isbn = ?
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_r3_consolidado AS
+SELECT
+    fl.isbn,
+    fl.titulo,
+    fl.tipo_narrativa,
+    fl.sinopsis,
+    fl.genero,
+    fl.primera_edicion,
+    fl.total_paginas,
+    fl.pais_origen,
+    fl.autores,
+    fl.valoracion_global,
+    ag.id_club,
+    ag.nombre_club,
+    ag.pais_club,
+    ag.ciudad_club,
+    ag.id_grupo,
+    ag.tipo_grupo,
+    ag.valoracion                          AS valoracion_grupo,
+    ag.conclusiones,
+    TO_CHAR(ag.fecha_cierre, 'DD/MM/YYYY') AS fecha_cierre,
+    ag.nombre_moderador
+FROM
+    MJV_vw_r3_ficha_libro               fl
+    LEFT JOIN MJV_vw_r3_analisis_por_grupo ag ON ag.isbn = fl.isbn
+ORDER BY
+    fl.isbn,
+    ag.valoracion DESC NULLS LAST,
+    ag.fecha_cierre DESC NULLS LAST;
+
+
+-- =============================================================================
+-- VISTA CONSOLIDADA PARA JASPERSOFT R01
+CREATE OR REPLACE VIEW MJV_vw_r1_consolidado AS
+SELECT
+    fm.id_lector,
+    fm.nombre_completo,
+    fm.doc_identidad,
+    fm.telefono,
+    fm.email,
+    fm.genero,
+    TO_CHAR(fm.fecha_nac, 'DD/MM/YYYY')        AS fecha_nacimiento,
+    fm.edad,
+    fm.pais_nacimiento,
+    fm.nacionalidad,
+    -- Libros favoritos (subconsulta escalar, no genera filas extra)
+    (SELECT pr.titulo FROM MJV_vw_r1_preferencias pr
+      WHERE pr.id_lector = fm.id_lector AND pr.prioridad = 1) AS favorito_1,
+    (SELECT pr.titulo FROM MJV_vw_r1_preferencias pr
+      WHERE pr.id_lector = fm.id_lector AND pr.prioridad = 2) AS favorito_2,
+    (SELECT pr.titulo FROM MJV_vw_r1_preferencias pr
+      WHERE pr.id_lector = fm.id_lector AND pr.prioridad = 3) AS favorito_3,
+    -- Membresía
+    hc.id_club,
+    hc.nombre_club,
+    hc.pais_club,
+    hc.ciudad_club,
+    TO_CHAR(hc.fecha_ingreso, 'DD/MM/YYYY')    AS fecha_ingreso_club,
+    TO_CHAR(hc.fecha_retiro,  'DD/MM/YYYY')    AS fecha_retiro_club,
+    hc.estatus,
+    hc.motivo_retiro,
+    TRUNC(MONTHS_BETWEEN(NVL(hc.fecha_retiro, SYSDATE), hc.fecha_ingreso)) AS meses_antiguedad,
+    -- Libro analizado (moderador en reunión de cierre del mismo club)
+    la.titulo       AS libro_analizado,
+    la.autores      AS autores_libro,
+    la.valoracion,
+    la.conclusiones,
+    TO_CHAR(la.fecha_reunion, 'DD/MM/YYYY')    AS fecha_cierre_libro
+FROM
+    MJV_vw_r1_ficha_miembro       fm
+    JOIN MJV_vw_r1_historial_clubes hc ON hc.id_lector = fm.id_lector
+    LEFT JOIN MJV_vw_r1_libros_analizados la
+           ON la.id_lector  = fm.id_lector
+          AND la.nombre_club = hc.nombre_club
+ORDER BY
+    fm.id_lector,
+    hc.estatus ASC,
+    hc.fecha_ingreso DESC,
+    la.fecha_reunion DESC;
