@@ -605,6 +605,38 @@ BEGIN
 END MJV_tgr_retirar_por_inasistencia;
 /
 
+-- =============================================================================
+-- AC-P1: Función Round-Robin para asignación equitativa de grupos
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION MJV_fn_grupo_menos_lleno (
+    p_id_club    IN NUMBER,
+    p_tipo_grupo IN VARCHAR2
+) RETURN NUMBER IS
+    v_id_grupo NUMBER;
+BEGIN
+    SELECT id_grupo
+      INTO v_id_grupo
+      FROM (
+        SELECT g.id_grupo,
+               COUNT(gl.id_lector) AS miembros_activos
+          FROM MJV_grupo g
+          LEFT JOIN MJV_g_lec gl ON gl.id_grupo = g.id_grupo
+                                 AND gl.id_club  = g.id_club
+                                 AND gl.fec_f    IS NULL
+         WHERE g.id_club    = p_id_club
+           AND g.tipo_grupo = LOWER(TRIM(p_tipo_grupo))
+         GROUP BY g.id_grupo
+         ORDER BY miembros_activos ASC, g.id_grupo ASC
+      )
+     WHERE ROWNUM = 1;
+    RETURN v_id_grupo;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN NULL;
+END MJV_fn_grupo_menos_lleno;
+/
+
 CREATE OR REPLACE PROCEDURE MJV_sp_inscribir_miembro (
     pi_p_nombre        IN VARCHAR2,
     pi_p_apellido      IN VARCHAR2,
@@ -1495,36 +1527,7 @@ ORDER BY
     pm.fecha_pago DESC;
 /
 
--- =============================================================================
--- AC-P1: Función Round-Robin para asignación equitativa de grupos
--- =============================================================================
-CREATE OR REPLACE FUNCTION MJV_fn_grupo_menos_lleno (
-    p_id_club    IN NUMBER,
-    p_tipo_grupo IN VARCHAR2
-) RETURN NUMBER IS
-    v_id_grupo NUMBER;
-BEGIN
-    SELECT id_grupo
-      INTO v_id_grupo
-      FROM (
-        SELECT g.id_grupo,
-               COUNT(gl.id_lector) AS miembros_activos
-          FROM MJV_grupo g
-          LEFT JOIN MJV_g_lec gl ON gl.id_grupo = g.id_grupo
-                                 AND gl.id_club  = g.id_club
-                                 AND gl.fec_f    IS NULL
-         WHERE g.id_club    = p_id_club
-           AND g.tipo_grupo = LOWER(TRIM(p_tipo_grupo))
-         GROUP BY g.id_grupo
-         ORDER BY miembros_activos ASC, g.id_grupo ASC
-      )
-     WHERE ROWNUM = 1;
-    RETURN v_id_grupo;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        RETURN NULL;
-END MJV_fn_grupo_menos_lleno;
-/
+
 
 -- =============================================================================
 -- AC-F1 / REPORTES: Vista MJV_vw_r1_libros_analizados corregida
