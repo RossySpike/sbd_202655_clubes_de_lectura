@@ -1390,3 +1390,4 @@ INSERT INTO MJV_inasistencia (
   '9788466631174'
 );
 -- V-ADU01: sin inasistencias → 100 % de participación. */ 
+

@@ -2596,14 +2596,18 @@ CREATE OR REPLACE FUNCTION MJV_promedio_part_mensual_tipo_grupo(
   p_tipo_grupo VARCHAR2,
   p_mes        NUMBER,
   p_anio       NUMBER
-) RETURN NUMBER
+) RETURN VARCHAR2 -- Cambiado a VARCHAR2 para retornar texto
 IS
-  v_tipo     VARCHAR2(10) := LOWER(TRIM(p_tipo_grupo));
-  v_promedio NUMBER;
+  v_tipo        VARCHAR2(10) := LOWER(TRIM(p_tipo_grupo));
+  v_promedio    NUMBER;
+  v_nombre_mes  VARCHAR2(20);
 BEGIN
   IF p_mes < 1 OR p_mes > 12 THEN
     RAISE_APPLICATION_ERROR(-20120, 'El mes debe estar entre 1 y 12.');
   END IF;
+
+  -- Convertir el número de mes a su nombre en español para una salida más amigable con el usuario 
+  v_nombre_mes := INITCAP(TO_CHAR(TO_DATE(p_mes, 'MM'), 'MONTH', 'NLS_DATE_LANGUAGE = SPANISH'));
 
   SELECT ROUND(AVG(((esperadas - faltas) / esperadas) * 100), 2)
   INTO v_promedio
@@ -2632,58 +2636,81 @@ BEGIN
       AND LOWER(g.tipo_grupo) = v_tipo
   )
   WHERE esperadas > 0;
-
-  RETURN NVL(v_promedio, 0);
+  RETURN TRIM(v_nombre_mes) || ': ' || NVL(TO_CHAR(v_promedio, '990.99'), '0.00') || '%';
 END MJV_promedio_part_mensual_tipo_grupo;
 /
 -- Porcentaje de asistencia (0-100) de un lector en un club durante un bimestre.
 -- Bimestre 1 = ene-feb, 2 = mar-abr, 3 = may-jun, 4 = jul-ago, 5 = sep-oct, 6 = nov-dic.
+-- Bimestre 1 = ene-feb, 2 = mar-abr, 3 = may-jun, 4 = jul-ago, 5 = sep-oct, 6 = nov-dic.
 CREATE OR REPLACE FUNCTION MJV_participacion_bimestre_miembro(
-  p_id_lector NUMBER,
-  p_id_club   NUMBER,
-  p_bimestre  NUMBER,
-  p_anio      NUMBER
-) RETURN NUMBER
+    p_id_lector NUMBER,
+    p_id_club   NUMBER,
+    p_bimestre  NUMBER,
+    p_anio      NUMBER
+) RETURN VARCHAR2 -- Cambiado a VARCHAR2 para retornar texto
 IS
-  v_mes_ini   NUMBER;
-  v_mes_fin   NUMBER;
-  v_esperadas NUMBER;
-  v_faltas    NUMBER;
+    v_mes_ini         NUMBER;
+    v_mes_fin         NUMBER;
+    v_esperadas       NUMBER;
+    v_faltas          NUMBER;
+    v_nombre_bimestre VARCHAR2(40);
 BEGIN
-  IF p_bimestre < 1 OR p_bimestre > 6 THEN
-    RAISE_APPLICATION_ERROR(-20121, 'El bimestre debe estar entre 1 y 6.');
-  END IF;
- v_mes_ini := (p_bimestre - 1) * 2 + 1;
-  v_mes_fin := p_bimestre * 2;
+    IF p_bimestre < 1 OR p_bimestre > 6 THEN
+        RAISE_APPLICATION_ERROR(-20121, 'El bimestre debe estar entre 1 y 6.');
+    END IF;
+    
+    -- Determinar el rango de meses
+    v_mes_ini := (p_bimestre - 1) * 2 + 1;
+    v_mes_fin := p_bimestre * 2;
 
-  -- Reuniones totales programadas y ejecutadas a las que el lector pertenecía en ese bimestre
-  SELECT COUNT(*)
-  INTO v_esperadas
-  FROM MJV_calendario_reunion_mes crm
-  JOIN MJV_g_lec gl ON gl.id_grupo = crm.id_grupo AND gl.id_club = p_id_club
-  WHERE gl.id_lector = p_id_lector
-    AND gl.id_club   = p_id_club
-    AND crm.realizada = 'S'
-    AND EXTRACT(YEAR FROM crm.fecha) = p_anio
-    AND EXTRACT(MONTH FROM crm.fecha) BETWEEN v_mes_ini AND v_mes_fin
-    AND crm.fecha BETWEEN gl.fec_i AND NVL(gl.fec_f, TO_DATE('31/12/9999', 'DD/MM/YYYY'));
+    -- Mapeo estricto de nombres de bimestres separados por guion
+    v_nombre_bimestre := CASE p_bimestre
+        WHEN 1 THEN 'Enero-Febrero'
+        WHEN 2 THEN 'Marzo-Abril'
+        WHEN 3 THEN 'Mayo-Junio'
+        WHEN 4 THEN 'Julio-Agosto'
+        WHEN 5 THEN 'Septiembre-Octubre'
+        WHEN 6 THEN 'Noviembre-Diciembre'
+    END;
 
-  IF v_esperadas = 0 THEN
-    RETURN 100;
-  END IF;
+    -- Cálculo del universo obligatorio del lector (Se mantiene tu lógica)
+    SELECT COUNT(*)
+      INTO v_esperadas
+      FROM MJV_calendario_reunion_mes crm
+     WHERE crm.id_club = p_id_club
+       AND crm.realizada = 'S'
+       AND EXTRACT(YEAR FROM crm.fecha) = p_anio
+       AND EXTRACT(MONTH FROM crm.fecha) BETWEEN v_mes_ini AND v_mes_fin
+       AND crm.id_grupo = (
+           SELECT gl.id_grupo 
+             FROM MJV_g_lec gl 
+            WHERE gl.id_lector = p_id_lector 
+              AND gl.id_club = p_id_club 
+              AND EXTRACT(YEAR FROM gl.fec_i) <= p_anio
+              AND ROWNUM = 1
+       );
 
-  -- Inasistencias registradas del lector en ese mismo periodo
-  SELECT COUNT(*)
-  INTO v_faltas
-  FROM MJV_inasistencia i
-  JOIN MJV_calendario_reunion_mes crm ON crm.id_grupo = i.id_grupo AND crm.fecha = i.fecha_reunion
-  WHERE i.id_lector = p_id_lector
-    AND i.id_club   = p_id_club
-    AND crm.realizada = 'S'
-    AND EXTRACT(YEAR FROM crm.fecha) = p_anio
-    AND EXTRACT(MONTH FROM crm.fecha) BETWEEN v_mes_ini AND v_mes_fin;
+    IF v_esperadas = 0 THEN
+        RETURN v_nombre_bimestre || ': 0.00% (Inasistencias)';
+    END IF;
 
-  RETURN ROUND(((v_esperadas - v_faltas) / v_esperadas) * 100, 2);
+    -- Inasistencias registradas
+    SELECT COUNT(*)
+      INTO v_faltas
+      FROM MJV_inasistencia i
+      JOIN MJV_calendario_reunion_mes crm 
+        ON crm.id_club = i.id_club 
+       AND crm.id_grupo = i.id_grupo 
+       AND crm.fecha = i.fecha_reunion 
+       AND crm.isbn = i.isbn
+     WHERE i.id_lector = p_id_lector
+       AND i.id_club   = p_id_club
+       AND crm.realizada = 'S'
+       AND EXTRACT(YEAR FROM crm.fecha) = p_anio
+       AND EXTRACT(MONTH FROM crm.fecha) BETWEEN v_mes_ini AND v_mes_fin;
+
+    -- Retorna el texto formateado con los dos meses y el % de inasistencia
+    RETURN v_nombre_bimestre || ': ' || TO_CHAR(ROUND((v_faltas / v_esperadas) * 100, 2), '990.99') || '%';
 END MJV_participacion_bimestre_miembro;  
 /
 
