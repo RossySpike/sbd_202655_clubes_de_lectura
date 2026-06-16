@@ -1388,6 +1388,7 @@ BEGIN
 END MJV_fn_hora_fin_valida;
 /
 
+/*
 CREATE OR REPLACE TRIGGER MJV_tgr_validar_duracion_grupo
 BEFORE INSERT OR UPDATE ON MJV_grupo
 FOR EACH ROW
@@ -1402,7 +1403,7 @@ BEGIN
     END IF;
 END MJV_tgr_validar_duracion_grupo;
 /
-
+*/
 -- =============================================================================
 -- BRECHA D: 4 vistas operativas de administración de reuniones
 -- =============================================================================
