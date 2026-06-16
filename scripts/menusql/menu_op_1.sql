@@ -15,8 +15,10 @@ PROMPT
 
 SELECT l.id_lector,
        l.p_nombre || ' ' || l.p_apellido AS nombre,
-       l.doc_identidad
+       l.doc_identidad,
+       MJV_edad_miembro(l.id_lector) AS edad
 FROM   MJV_lector l
+WHERE  MJV_edad_miembro(l.id_lector) > 25
 ORDER  BY l.id_lector;
 
 -- -----------------------------------------------------------------------------

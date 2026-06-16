@@ -13,26 +13,18 @@ PROMPT
 PROMPT *** REUNIONES REALIZADAS PENDIENTES DE CIERRE (sin conclusiones) ***
 PROMPT
 
-SELECT cr.id_club,
-       cr.nombre_club,
-       cr.id_grupo,
-       cr.tipo_grupo,
-       cr.fecha_reunion,
-       cr.isbn,
-       cr.titulo_libro,
-       cr.es_ultima
-FROM   MJV_vw_reuniones_mes cr
-WHERE  cr.realizada = 'Realizada'
-  AND  NOT EXISTS (
-           SELECT 1
-           FROM   MJV_vw_historico_discusiones hd
-           WHERE  hd.id_club  = cr.id_club
-             AND  hd.id_grupo = cr.id_grupo
-             AND  hd.fecha    = cr.fecha_reunion
-             AND  hd.isbn     = cr.isbn
-             AND  hd.conclusiones IS NOT NULL
-       )
-ORDER  BY cr.id_club, cr.id_grupo, cr.fecha_reunion;
+SELECT ed.id_club,
+       ed.nombre_club,
+       ed.id_grupo,
+       ed.tipo_grupo,
+       ed.isbn,
+       ed.titulo,
+       ed.sesiones_realizadas,
+       ed.ultima_sesion,
+       ed.estado_discusion
+FROM   MJV_vw_estado_discusiones ed
+WHERE  ed.estado_discusion = 'En curso'
+ORDER  BY ed.id_club, ed.id_grupo, ed.ultima_sesion;
 
 -- -----------------------------------------------------------------------------
 -- REFERENCIA: Historico de discusiones ya cerradas (para ver el contexto)
@@ -41,15 +33,20 @@ PROMPT
 PROMPT *** HISTORICO DE DISCUSIONES YA CERRADAS ***
 PROMPT
 
-SELECT hd.id_club,
-       hd.id_grupo,
-       hd.fecha,
-       hd.isbn,
-       hd.titulo,
-       hd.valoracion,
-       hd.conclusiones
-FROM   MJV_vw_historico_discusiones hd
-ORDER  BY hd.id_club, hd.fecha DESC;
+SELECT ed.id_club,
+       ed.nombre_club,
+       ed.id_grupo,
+       ed.tipo_grupo,
+       ed.isbn,
+       ed.titulo,
+       ed.sesiones_realizadas,
+       ed.ultima_sesion,
+       ed.valoracion_final,
+       ed.conclusiones_finales,
+       ed.estado_discusion
+FROM   MJV_vw_estado_discusiones ed
+WHERE  ed.estado_discusion = 'Cerrada'
+ORDER  BY ed.id_club, ed.ultima_sesion DESC;
 
 PROMPT
 PROMPT *** INGRESE LOS DATOS DEL CIERRE ***
@@ -87,18 +84,21 @@ PROMPT
 PROMPT *** RESULTADO — DISCUSION CERRADA ***
 PROMPT
 
-SELECT hd.id_club,
-       hd.id_grupo,
-       hd.fecha,
-       hd.isbn,
-       hd.titulo,
-       hd.valoracion,
-       hd.conclusiones
-FROM   MJV_vw_historico_discusiones hd
-WHERE  hd.id_club  = &p_id_club
-  AND  hd.id_grupo = &p_id_grupo
-  AND  hd.fecha    = TO_DATE(TRIM('&p_fec_reu'), 'DD/MM/YYYY')
-  AND  hd.isbn     = TRIM('&p_isbn');
+SELECT ed.id_club,
+       ed.nombre_club,
+       ed.id_grupo,
+       ed.tipo_grupo,
+       ed.isbn,
+       ed.titulo,
+       ed.sesiones_realizadas,
+       ed.ultima_sesion,
+       ed.valoracion_final,
+       ed.conclusiones_finales,
+       ed.estado_discusion
+FROM   MJV_vw_estado_discusiones ed
+WHERE  ed.id_club  = &p_id_club
+  AND  ed.id_grupo = &p_id_grupo
+  AND  ed.isbn     = TRIM('&p_isbn');
 
 -- -----------------------------------------------------------------------------
 -- RESULTADO: Ficha completa del libro con valoracion promedio actualizada

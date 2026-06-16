@@ -67,7 +67,7 @@ SELECT cr.id_club,
        cr.titulo_libro,
        cr.nombre_moderador,
        cr.realizada
-FROM   MJV_vw_reuniones_mes cr
+FROM   MJV_v_reuniones_mes cr
 ORDER  BY cr.id_club, cr.fecha_reunion;
 
 PROMPT
@@ -117,7 +117,7 @@ SELECT cr.id_club,
        cr.nombre_moderador,
        cr.realizada,
        cr.es_ultima
-FROM   MJV_vw_reuniones_mes cr
+FROM   MJV_v_reuniones_mes cr
 WHERE  cr.id_club  = &p_id_club
   AND  cr.id_grupo = &p_id_grupo
   AND  cr.fecha_reunion = TO_DATE(TRIM('&p_fec_reu'), 'DD/MM/YYYY');

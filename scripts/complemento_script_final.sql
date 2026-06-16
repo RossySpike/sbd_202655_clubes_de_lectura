@@ -2278,3 +2278,23 @@ ORDER BY
     hc.estatus ASC,
     hc.fecha_ingreso DESC,
     la.fecha_reunion DESC;
+/
+
+-- =============================================================================
+-- VISTA OPERATIVA: MJV_vw_historico_discusiones
+-- Propósito: Historial de discusiones cerradas (reunión con realizada='S').
+--            Usada por menu_op_6 para mostrar contexto y resultado del cierre.
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_historico_discusiones AS
+SELECT
+    c.id_club,
+    c.id_grupo,
+    c.fecha,
+    c.isbn,
+    l.titulo,
+    c.conclusiones,
+    c.valoracion
+FROM MJV_calendario_reunion_mes c
+JOIN MJV_libro l ON c.isbn = l.isbn
+WHERE c.realizada = 'S';
+/

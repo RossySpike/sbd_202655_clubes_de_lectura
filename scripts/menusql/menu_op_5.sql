@@ -21,7 +21,7 @@ SELECT cr.id_club,
        cr.isbn,
        cr.titulo_libro,
        cr.realizada
-FROM   MJV_vw_reuniones_mes cr
+FROM   MJV_v_reuniones_mes cr
 ORDER  BY cr.id_club, cr.id_grupo, cr.fecha_reunion;
 
 -- -----------------------------------------------------------------------------
