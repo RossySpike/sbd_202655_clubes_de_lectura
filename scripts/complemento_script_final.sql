@@ -388,6 +388,134 @@ BEGIN
 END MJV_fn_vetado_por_inasistencia;
 /
 
+-- =============================================================================
+-- BRECHA 3: Función canónica para detectar libro en discusión activa
+-- =============================================================================
+CREATE OR REPLACE FUNCTION MJV_fn_grupo_discutiendo_libro (
+    p_id_club  IN NUMBER,
+    p_id_grupo IN NUMBER
+) RETURN NUMBER IS
+    v_count NUMBER;
+BEGIN
+    SELECT COUNT(*)
+      INTO v_count
+      FROM MJV_calendario_reunion_mes crm
+     WHERE crm.id_club   = p_id_club
+       AND crm.id_grupo  = p_id_grupo
+       AND crm.realizada = 'S'
+       AND crm.ultima    = 'N';
+    RETURN CASE WHEN v_count > 0 THEN 1 ELSE 0 END;
+END MJV_fn_grupo_discutiendo_libro;
+/
+
+-- =============================================================================
+-- BRECHA 3: Trigger corregido — Regla de Oro (inscripción bloqueada si hay libro activo)
+-- =============================================================================
+CREATE OR REPLACE TRIGGER MJV_tgr_bloquear_inscripcion_libro_activo
+BEFORE INSERT ON MJV_g_lec
+FOR EACH ROW
+DECLARE
+    v_discutiendo NUMBER;
+BEGIN
+    v_discutiendo := MJV_fn_grupo_discutiendo_libro(:NEW.id_club, :NEW.id_grupo);
+    IF v_discutiendo = 1 THEN
+        RAISE_APPLICATION_ERROR(-20050,
+            'REGLA DE ORO: No se puede inscribir un nuevo miembro al grupo '
+            || :NEW.id_grupo || ' mientras se esté discutiendo un libro activamente.');
+    END IF;
+END MJV_tgr_bloquear_inscripcion_libro_activo;
+/
+
+-- =============================================================================
+-- BRECHA 3: SP de split corregido con Regla de Oro
+-- =============================================================================
+CREATE OR REPLACE PROCEDURE MJV_sp_split_grupo (
+    p_id_club_original  IN  NUMBER,
+    p_id_grupo_original IN  NUMBER,
+    p_tipo_grupo        IN  VARCHAR2,
+    p_dia_reunion       IN  NUMBER,
+    p_hora_reunion      IN  DATE,
+    p_nuevo_grupo_id    OUT NUMBER
+) AS
+    v_min_miem    NUMBER;
+    v_discutiendo NUMBER;
+BEGIN
+    v_discutiendo := MJV_fn_grupo_discutiendo_libro(p_id_club_original, p_id_grupo_original);
+    IF v_discutiendo = 1 THEN
+        RAISE_APPLICATION_ERROR(-20051,
+            'REGLA DE ORO: No se puede realizar el split del grupo '
+            || p_id_grupo_original || ' mientras se esté discutiendo un libro activamente.');
+    END IF;
+    IF p_tipo_grupo = 'adultos' THEN v_min_miem := 10;
+    ELSIF p_tipo_grupo = 'jovenes' THEN v_min_miem := 5;
+    ELSE v_min_miem := 10; END IF;
+    INSERT INTO MJV_grupo (id_club, tipo_grupo, fecha_creacion, dia_reunion, hora_reunion)
+    VALUES (p_id_club_original, p_tipo_grupo, SYSDATE, p_dia_reunion, p_hora_reunion)
+    RETURNING id_grupo INTO p_nuevo_grupo_id;
+    UPDATE MJV_g_lec
+       SET id_grupo = p_nuevo_grupo_id
+     WHERE id_club  = p_id_club_original
+       AND id_grupo = p_id_grupo_original
+       AND fec_f    IS NULL
+       AND id_lector IN (
+           SELECT id_lector FROM (
+               SELECT id_lector, fec_i FROM MJV_g_lec
+                WHERE id_club = p_id_club_original AND id_grupo = p_id_grupo_original AND fec_f IS NULL
+                ORDER BY fec_i DESC FETCH FIRST v_min_miem ROWS ONLY));
+    COMMIT;
+END MJV_sp_split_grupo;
+/
+
+-- =============================================================================
+-- BRECHA 4: Trigger de moderador reforzado (simultáneo en otro grupo)
+-- =============================================================================
+CREATE OR REPLACE TRIGGER MJV_tgr_validar_moderador
+BEFORE INSERT OR UPDATE ON MJV_calendario_reunion_mes
+FOR EACH ROW
+DECLARE
+    v_es_miembro_club  NUMBER;
+    v_tipo_grupo       VARCHAR2(10);
+    v_es_adulto        NUMBER;
+    v_mod_ocupado      NUMBER;
+BEGIN
+    SELECT COUNT(*) INTO v_es_miembro_club
+      FROM MJV_g_lec
+     WHERE id_lector = :NEW.mod_id_lector AND id_club = :NEW.id_club AND fec_f IS NULL;
+    IF v_es_miembro_club = 0 THEN
+        RAISE_APPLICATION_ERROR(-20030, 'El moderador debe ser un miembro activo del mismo club.');
+    END IF;
+    SELECT tipo_grupo INTO v_tipo_grupo FROM MJV_grupo
+     WHERE id_grupo = :NEW.id_grupo AND id_club = :NEW.id_club;
+    IF v_tipo_grupo = 'niños' THEN
+        SELECT COUNT(*) INTO v_es_adulto
+          FROM MJV_g_lec gl JOIN MJV_grupo g ON gl.id_grupo = g.id_grupo AND gl.id_club = g.id_club
+         WHERE gl.id_lector = :NEW.mod_id_lector AND gl.id_club = :NEW.id_club
+           AND gl.fec_f IS NULL AND g.tipo_grupo = 'adultos';
+        IF v_es_adulto = 0 THEN
+            RAISE_APPLICATION_ERROR(-20031,
+                'Para reuniones de niños el moderador debe pertenecer a un grupo de adultos del mismo club.');
+        END IF;
+    END IF;
+    -- [BRECHA 4] Bloquear si el moderador tiene otro libro activo en otro grupo
+    SELECT COUNT(*) INTO v_mod_ocupado
+      FROM MJV_calendario_reunion_mes crm
+     WHERE crm.mod_id_lector = :NEW.mod_id_lector
+       AND crm.id_club        = :NEW.id_club
+       AND crm.realizada      = 'S'
+       AND crm.ultima         = 'N'
+       AND NOT (crm.id_grupo = :NEW.id_grupo AND crm.isbn = :NEW.isbn);
+    IF v_mod_ocupado > 0 THEN
+        RAISE_APPLICATION_ERROR(-20052,
+            'El moderador (ID: ' || :NEW.mod_id_lector
+            || ') ya está moderando activamente la discusión de otro libro en otro grupo. '
+            || 'Solo puede tomar una nueva moderación cuando termine la discusión actual.');
+    END IF;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(-20032, 'No se encontró información del grupo o club asociado a la reunión.');
+END MJV_tgr_validar_moderador;
+/
+
 CREATE OR REPLACE FUNCTION MJV_fn_pct_inasistencia_bimestre (
     p_id_lector      IN NUMBER,
     p_id_club        IN NUMBER,
@@ -583,20 +711,13 @@ BEGIN
         RAISE_APPLICATION_ERROR(-20003, 'Error: La edad mínima de ingreso es 6 años.');
     END IF;
 
-    -- 9. Buscar o crear el grupo correspondiente
-    BEGIN
-        SELECT id_grupo
-          INTO v_id_grupo
-          FROM MJV_grupo
-         WHERE id_club    = v_id_club
-           AND tipo_grupo = v_tipo_grupo
-           AND ROWNUM = 1;
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            INSERT INTO MJV_grupo (id_club, tipo_grupo, fecha_creacion, dia_reunion, hora_reunion)
-            VALUES (v_id_club, v_tipo_grupo, SYSDATE, 2, TO_DATE('17:00:00', 'HH24:MI:SS'))
-            RETURNING id_grupo INTO v_id_grupo;
-    END;
+    -- 9. Seleccionar grupo con round-robin (grupo con menos miembros activos del tipo)
+    v_id_grupo := MJV_fn_grupo_menos_lleno(v_id_club, v_tipo_grupo);
+    IF v_id_grupo IS NULL THEN
+        INSERT INTO MJV_grupo (id_club, tipo_grupo, fecha_creacion, dia_reunion, hora_reunion)
+        VALUES (v_id_club, v_tipo_grupo, SYSDATE, 2, TO_DATE('17:00:00', 'HH24:MI:SS'))
+        RETURNING id_grupo INTO v_id_grupo;
+    END IF;
 
     -- 10. Asignar al grupo (dispara MJV_tgr_bloquear_inscripcion_libro_activo
     --     y MJV_tgr_grupo_lleno → MJV_sp_split_grupo si aplica)
@@ -1150,46 +1271,6 @@ EXCEPTION
 END MJV_sp_registrar_asistencia_miembro;
 /
 
-
-CREATE OR REPLACE TRIGGER MJV_tgr_retirar_por_inasistencia
-AFTER INSERT ON MJV_inasistencia
-FOR EACH ROW
-DECLARE
-    v_pct NUMBER;
-BEGIN
-    v_pct := MJV_fn_pct_inasistencia_bimestre(
-                  :NEW.id_lector,
-                  :NEW.id_club,
-                  :NEW.fecha_reunion,
-                  :NEW.id_grupo,
-                  :NEW.isbn
-              );
-
-    IF v_pct > 30 THEN
-        UPDATE MJV_g_lec
-           SET fec_f = SYSDATE
-         WHERE id_lector = :NEW.id_lector
-           AND id_club   = :NEW.id_club
-           AND fec_f     IS NULL;
-
-        UPDATE MJV_historia_membresia
-           SET estatus       = 'retirado',
-               fecha_f       = SYSDATE,
-               motivo_retiro = 'inasistencia'
-         WHERE id_lector = :NEW.id_lector
-           AND id_club   = :NEW.id_club
-           AND estatus   = 'activo';
-
-        DBMS_OUTPUT.PUT_LINE(
-            'RETIRO AUTOMÁTICO: Lector ID ' || :NEW.id_lector
-            || ' — ' || ROUND(v_pct, 1) || '% de inasistencia en el bimestre.'
-        );
-    END IF;
-END MJV_tgr_retirar_por_inasistencia;
-/
-
--- Nota: el trigger se activa automáticamente cuando se inserta una inasistencia en MJV_inasistencia.
-
 CREATE OR REPLACE PROCEDURE MJV_sp_cerrar_discusion_reunion (
     pi_id_club       IN NUMBER,
     pi_id_grupo      IN NUMBER,
@@ -1225,6 +1306,11 @@ BEGIN
        AND id_grupo = pi_id_grupo
        AND fecha = TRUNC(pi_fecha_reunion)
        AND isbn = TRIM(pi_isbn);
+
+    -- [BRECHA B] No cerrar si la reunión aún no ha sido realizada
+    IF v_reunion_realizada = 'N' THEN
+        RAISE_APPLICATION_ERROR(-20084, 'ERROR: No se puede cerrar una reunión que aún no ha sido realizada. Registre la asistencia primero.');
+    END IF;
 
     IF v_ultima_actual = 'S' THEN
         RAISE_APPLICATION_ERROR(
@@ -1271,4 +1357,305 @@ EXCEPTION
         ROLLBACK;
         RAISE;
 END MJV_sp_cerrar_discusion_reunion;
+/
+
+-- =============================================================================
+-- BRECHA C: Función y trigger de duración máxima de reunión (2h; adultos/jóvenes ≤ 21:00)
+-- =============================================================================
+CREATE OR REPLACE FUNCTION MJV_fn_hora_fin_valida (
+    p_tipo_grupo   IN VARCHAR2,
+    p_hora_inicio  IN DATE,
+    p_duracion_min IN NUMBER
+) RETURN VARCHAR2 IS
+    v_hora_fin DATE;
+    v_minutos  NUMBER := NVL(p_duracion_min, 0);
+BEGIN
+    IF v_minutos > 120 THEN
+        RETURN 'ERROR: La duración máxima de una reunión es 120 minutos (2 horas).';
+    END IF;
+    v_hora_fin := p_hora_inicio + v_minutos / 1440;
+    IF LOWER(TRIM(p_tipo_grupo)) IN ('adultos', 'jovenes') THEN
+        IF TO_CHAR(v_hora_fin, 'HH24:MI') > '21:00' THEN
+            RETURN 'ERROR: Las reuniones de adultos y jóvenes deben terminar a más tardar a las 21:00.';
+        END IF;
+    END IF;
+    IF LOWER(TRIM(p_tipo_grupo)) = 'niños' THEN
+        IF TO_CHAR(v_hora_fin, 'HH24:MI') > '19:00' THEN
+            RETURN 'ERROR: Las reuniones de niños deben terminar a más tardar a las 19:00.';
+        END IF;
+    END IF;
+    RETURN NULL;
+END MJV_fn_hora_fin_valida;
+/
+
+CREATE OR REPLACE TRIGGER MJV_tgr_validar_duracion_grupo
+BEFORE INSERT OR UPDATE ON MJV_grupo
+FOR EACH ROW
+DECLARE
+    v_error VARCHAR2(300);
+BEGIN
+    IF :NEW.duracion_min IS NOT NULL THEN
+        v_error := MJV_fn_hora_fin_valida(:NEW.tipo_grupo, :NEW.hora_reunion, :NEW.duracion_min);
+        IF v_error IS NOT NULL THEN
+            RAISE_APPLICATION_ERROR(-20069, v_error);
+        END IF;
+    END IF;
+END MJV_tgr_validar_duracion_grupo;
+/
+
+-- =============================================================================
+-- BRECHA D: 4 vistas operativas de administración de reuniones
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_reuniones_calendario_activo AS
+SELECT
+    c.id_club,
+    c.nombre_club,
+    g.id_grupo,
+    INITCAP(g.tipo_grupo) AS tipo_grupo,
+    crm.fecha,
+    TO_CHAR(g.hora_reunion, 'HH24:MI') AS hora_inicio,
+    crm.isbn,
+    lb.titulo AS titulo_libro,
+    crm.mod_id_lector,
+    l.p_nombre || ' ' || l.p_apellido || ' ' || NVL(l.s_apellido, '') AS nombre_moderador,
+    DECODE(crm.realizada, 'S', 'Realizada', 'N', 'Pendiente') AS estado_reunion,
+    DECODE(crm.ultima,    'S', 'Cerrada',   'N', 'En curso')  AS estado_discusion
+FROM MJV_calendario_reunion_mes crm
+JOIN MJV_grupo  g  ON g.id_grupo = crm.id_grupo AND g.id_club = crm.id_club
+JOIN MJV_club   c  ON c.id_club  = crm.id_club
+JOIN MJV_libro  lb ON lb.isbn    = crm.isbn
+JOIN MJV_lector l  ON l.id_lector = crm.mod_id_lector
+WHERE crm.ultima = 'N'
+ORDER BY crm.fecha, c.nombre_club, g.id_grupo;
+/
+
+CREATE OR REPLACE VIEW MJV_vw_inasistencias_bimestre AS
+SELECT
+    EXTRACT(YEAR FROM crm.fecha)             AS anio,
+    CEIL(EXTRACT(MONTH FROM crm.fecha) / 2)  AS bimestre,
+    i.id_lector,
+    l.p_nombre || ' ' || l.p_apellido || ' ' || NVL(l.s_apellido, '') AS nombre_lector,
+    i.id_club,
+    c.nombre_club,
+    i.id_grupo,
+    COUNT(*)                                 AS total_inasistencias,
+    (SELECT COUNT(*) FROM MJV_calendario_reunion_mes crm2
+       JOIN MJV_g_lec gl2 ON gl2.id_grupo = crm2.id_grupo AND gl2.id_club = i.id_club
+      WHERE gl2.id_lector = i.id_lector AND gl2.id_club = i.id_club
+        AND crm2.realizada = 'S'
+        AND EXTRACT(YEAR  FROM crm2.fecha) = EXTRACT(YEAR FROM crm.fecha)
+        AND CEIL(EXTRACT(MONTH FROM crm2.fecha) / 2) = CEIL(EXTRACT(MONTH FROM crm.fecha) / 2)
+        AND crm2.fecha BETWEEN gl2.fec_i AND NVL(gl2.fec_f, DATE '9999-12-31')
+    )                                        AS total_reuniones_esperadas,
+    ROUND(COUNT(*) * 100.0 /
+        NULLIF((SELECT COUNT(*) FROM MJV_calendario_reunion_mes crm2
+                  JOIN MJV_g_lec gl2 ON gl2.id_grupo = crm2.id_grupo AND gl2.id_club = i.id_club
+                 WHERE gl2.id_lector = i.id_lector AND gl2.id_club = i.id_club
+                   AND crm2.realizada = 'S'
+                   AND EXTRACT(YEAR FROM crm2.fecha) = EXTRACT(YEAR FROM crm.fecha)
+                   AND CEIL(EXTRACT(MONTH FROM crm2.fecha) / 2) = CEIL(EXTRACT(MONTH FROM crm.fecha) / 2)
+                   AND crm2.fecha BETWEEN gl2.fec_i AND NVL(gl2.fec_f, DATE '9999-12-31')), 0)
+    , 2)                                     AS pct_inasistencia
+FROM MJV_inasistencia i
+JOIN MJV_calendario_reunion_mes crm ON crm.id_grupo = i.id_grupo
+                                   AND crm.id_club  = i.id_club
+                                   AND crm.fecha    = i.fecha_reunion
+                                   AND crm.isbn     = i.isbn
+JOIN MJV_lector l ON l.id_lector = i.id_lector
+JOIN MJV_club   c ON c.id_club   = i.id_club
+GROUP BY
+    EXTRACT(YEAR FROM crm.fecha),
+    CEIL(EXTRACT(MONTH FROM crm.fecha) / 2),
+    i.id_lector, l.p_nombre, l.p_apellido, l.s_apellido,
+    i.id_club, c.nombre_club, i.id_grupo
+ORDER BY pct_inasistencia DESC;
+/
+
+CREATE OR REPLACE VIEW MJV_vw_estado_discusiones AS
+SELECT
+    c.id_club,
+    c.nombre_club,
+    g.id_grupo,
+    INITCAP(g.tipo_grupo) AS tipo_grupo,
+    lb.isbn,
+    lb.titulo,
+    COUNT(crm.fecha)                                          AS sesiones_realizadas,
+    MAX(crm.fecha)                                            AS ultima_sesion,
+    MAX(CASE WHEN crm.ultima = 'S' THEN crm.valoracion END)  AS valoracion_final,
+    MAX(CASE WHEN crm.ultima = 'S' THEN crm.conclusiones END) AS conclusiones_finales,
+    CASE
+        WHEN MAX(CASE WHEN crm.ultima = 'S' THEN 1 ELSE 0 END) = 1 THEN 'Cerrada'
+        WHEN COUNT(CASE WHEN crm.realizada = 'S' THEN 1 END) > 0    THEN 'En curso'
+        ELSE 'Pendiente'
+    END AS estado_discusion
+FROM MJV_calendario_reunion_mes crm
+JOIN MJV_grupo  g  ON g.id_grupo = crm.id_grupo AND g.id_club = crm.id_club
+JOIN MJV_club   c  ON c.id_club  = crm.id_club
+JOIN MJV_libro  lb ON lb.isbn    = crm.isbn
+GROUP BY c.id_club, c.nombre_club, g.id_grupo, g.tipo_grupo, lb.isbn, lb.titulo
+ORDER BY c.nombre_club, g.id_grupo, lb.titulo;
+/
+
+CREATE OR REPLACE VIEW MJV_vw_moderadores_activos AS
+SELECT
+    c.id_club,
+    c.nombre_club,
+    crm.mod_id_lector AS id_moderador,
+    l.p_nombre || ' ' || l.p_apellido || ' ' || NVL(l.s_apellido, '') AS nombre_moderador,
+    COUNT(DISTINCT crm.isbn || '|' || crm.id_grupo)  AS libros_en_moderacion,
+    MIN(crm.fecha)                                    AS fecha_inicio_moderacion_mas_antigua,
+    LISTAGG(lb.titulo, '; ') WITHIN GROUP (ORDER BY lb.titulo) AS titulos_en_moderacion
+FROM MJV_calendario_reunion_mes crm
+JOIN MJV_club   c  ON c.id_club   = crm.id_club
+JOIN MJV_lector l  ON l.id_lector = crm.mod_id_lector
+JOIN MJV_libro  lb ON lb.isbn     = crm.isbn
+WHERE crm.realizada = 'S'
+  AND crm.ultima    = 'N'
+GROUP BY c.id_club, c.nombre_club, crm.mod_id_lector, l.p_nombre, l.p_apellido, l.s_apellido
+ORDER BY c.nombre_club, libros_en_moderacion DESC;
+/
+
+-- =============================================================================
+-- AC-F1: Vista de Historial de Pagos de Membresía
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_historial_pagos_membresia AS
+SELECT
+    l.id_lector,
+    l.p_nombre || ' ' || l.p_apellido || ' ' || NVL(l.s_apellido, '') AS nombre_completo,
+    l.doc_identidad,
+    c.id_club,
+    c.nombre_club,
+    pm.fecha_i        AS inicio_membresia,
+    pm.fecha_pago,
+    pm.monto          AS monto_usd,
+    CEIL(MONTHS_BETWEEN(pm.fecha_pago, pm.fecha_i) / 12) AS anio_membresia_pagado
+FROM
+    MJV_pago_membresia pm
+    JOIN MJV_lector l ON l.id_lector = pm.id_lector
+    JOIN MJV_club   c ON c.id_club   = pm.id_club
+ORDER BY
+    c.nombre_club,
+    l.p_apellido,
+    pm.fecha_pago DESC;
+/
+
+-- =============================================================================
+-- AC-P1: Función Round-Robin para asignación equitativa de grupos
+-- =============================================================================
+CREATE OR REPLACE FUNCTION MJV_fn_grupo_menos_lleno (
+    p_id_club    IN NUMBER,
+    p_tipo_grupo IN VARCHAR2
+) RETURN NUMBER IS
+    v_id_grupo NUMBER;
+BEGIN
+    SELECT id_grupo
+      INTO v_id_grupo
+      FROM (
+        SELECT g.id_grupo,
+               COUNT(gl.id_lector) AS miembros_activos
+          FROM MJV_grupo g
+          LEFT JOIN MJV_g_lec gl ON gl.id_grupo = g.id_grupo
+                                 AND gl.id_club  = g.id_club
+                                 AND gl.fec_f    IS NULL
+         WHERE g.id_club    = p_id_club
+           AND g.tipo_grupo = LOWER(TRIM(p_tipo_grupo))
+         GROUP BY g.id_grupo
+         ORDER BY miembros_activos ASC, g.id_grupo ASC
+      )
+     WHERE ROWNUM = 1;
+    RETURN v_id_grupo;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN NULL;
+END MJV_fn_grupo_menos_lleno;
+/
+
+-- =============================================================================
+-- AC-F1 / REPORTES: Vista MJV_vw_r1_libros_analizados corregida
+-- Corrige: vincula por membresía activa del lector (no solo por moderador)
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_r1_libros_analizados AS
+SELECT DISTINCT
+    gl.id_lector,
+    lb.isbn,
+    lb.titulo,
+    LISTAGG(NVL(a.p_nombre, a.nombre_ant_pseudonimo) || ' ' || NVL(a.p_apellido, ''), ', ')
+        WITHIN GROUP (ORDER BY a.id_autor) AS autores,
+    crm.valoracion,
+    crm.conclusiones,
+    c.id_club,
+    c.nombre_club,
+    g.tipo_grupo,
+    crm.fecha AS fecha_cierre
+FROM MJV_g_lec gl
+    JOIN MJV_grupo g ON g.id_grupo = gl.id_grupo AND g.id_club = gl.id_club
+    JOIN MJV_club c ON c.id_club = gl.id_club
+    JOIN MJV_calendario_reunion_mes crm ON crm.id_grupo = gl.id_grupo
+                                       AND crm.id_club  = gl.id_club
+                                       AND crm.ultima   = 'S'
+                                       AND crm.valoracion IS NOT NULL
+                                       AND crm.fecha BETWEEN gl.fec_i AND NVL(gl.fec_f, DATE '9999-12-31')
+    JOIN MJV_libro lb ON lb.isbn = crm.isbn
+    JOIN MJV_libro_autor la ON la.isbn = lb.isbn
+    JOIN MJV_autor a ON a.id_autor = la.id_autor
+GROUP BY
+    gl.id_lector, lb.isbn, lb.titulo, crm.valoracion,
+    crm.conclusiones, c.id_club, c.nombre_club, g.tipo_grupo, crm.fecha;
+/
+
+-- =============================================================================
+-- AC-F1 / REPORTES: Vista MJV_vw_r4_crecimiento_anual corregida
+-- Corrige: orden por país ASC, año DESC (no solo por crecimiento)
+-- =============================================================================
+CREATE OR REPLACE VIEW MJV_vw_r4_crecimiento_anual AS
+WITH
+miembros_por_anio AS (
+    SELECT hm.id_club, EXTRACT(YEAR FROM hm.fecha_i) AS anio, COUNT(*) AS nuevos_miembros
+    FROM MJV_historia_membresia hm
+    GROUP BY hm.id_club, EXTRACT(YEAR FROM hm.fecha_i)
+),
+ingresos_por_anio AS (
+    SELECT pm.id_club, EXTRACT(YEAR FROM pm.fecha_pago) AS anio, SUM(pm.monto) AS ingresos_usd
+    FROM MJV_pago_membresia pm
+    JOIN MJV_club c ON c.id_club = pm.id_club
+    WHERE c.cuota_anual = 'S'
+    GROUP BY pm.id_club, EXTRACT(YEAR FROM pm.fecha_pago)
+),
+anios_por_club AS (
+    SELECT id_club, anio FROM miembros_por_anio
+    UNION
+    SELECT id_club, anio FROM ingresos_por_anio
+),
+consolidado AS (
+    SELECT ac.id_club, ac.anio,
+           NVL(m.nuevos_miembros, 0) AS nuevos_miembros,
+           NVL(i.ingresos_usd, 0)    AS ingresos_usd,
+           LAG(NVL(m.nuevos_miembros, 0)) OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS miembros_anio_anterior,
+           LAG(NVL(i.ingresos_usd, 0))    OVER (PARTITION BY ac.id_club ORDER BY ac.anio) AS ingresos_anio_anterior
+    FROM anios_por_club ac
+    LEFT JOIN miembros_por_anio m ON m.id_club = ac.id_club AND m.anio = ac.anio
+    LEFT JOIN ingresos_por_anio i ON i.id_club = ac.id_club AND i.anio = ac.anio
+)
+SELECT
+    c.id_club,
+    c.nombre_club,
+    p.nombre_pais,
+    ci.nombre_ciudad,
+    CASE c.cuota_anual WHEN 'S' THEN 'Independiente' ELSE 'Institucional' END AS tipo_club,
+    co.anio,
+    co.nuevos_miembros,
+    co.ingresos_usd,
+    co.miembros_anio_anterior,
+    co.ingresos_anio_anterior,
+    ROUND(((co.nuevos_miembros - co.miembros_anio_anterior) / NULLIF(co.miembros_anio_anterior, 0)) * 100, 2) AS pct_crecimiento_miembros,
+    ROUND(((co.ingresos_usd   - co.ingresos_anio_anterior)  / NULLIF(co.ingresos_anio_anterior,  0)) * 100, 2) AS pct_crecimiento_economico
+FROM consolidado co
+JOIN MJV_club   c  ON c.id_club  = co.id_club
+JOIN MJV_pais   p  ON p.id_pais  = c.id_pais
+JOIN MJV_ciudad ci ON ci.id_pais = c.id_pais AND ci.id_ciudad = c.id_ciudad
+ORDER BY
+    p.nombre_pais ASC,
+    co.anio DESC,
+    pct_crecimiento_miembros DESC NULLS LAST,
+    pct_crecimiento_economico DESC NULLS LAST;
 /
