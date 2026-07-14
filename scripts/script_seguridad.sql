@@ -4,6 +4,8 @@
 -- Administrador_Obras, Coordinador_Datos. Se asume MJV_DEV (dueño del
 -- esquema) ya existe. Orden: script_final.sql -> complemento_script_final.sql
 -- -> este archivo.
+-- Dinamica: primero se disena todo (perfiles + roles con privilegios) y
+-- luego se da de alta cada cuenta con su rol ya asignado en un solo bloque.
 -- =============================================================================
 
 
@@ -79,64 +81,24 @@ CREATE PROFILE MJV_perfil_lector LIMIT
     PASSWORD_VERIFY_FUNCTION   ORA12C_VERIFY_FUNCTION;
 
 
--- PARTE 2: CUENTAS DE USUARIO FINAL (como DBA) - unico priv. de sistema: CREATE SESSION
--- QUOTA 0: correcto, los INSERT de usuarios finales caen en tablas propiedad
--- de MJV_DEV, la cuota se descuenta del dueño de la tabla, no de quien inserta.
-CREATE USER MJV_LECTOR_DEMO IDENTIFIED BY "CambiarClaveLector#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_lector
-    QUOTA 0 ON USERS;
-
-CREATE USER MJV_MODERADOR_DEMO IDENTIFIED BY "CambiarClaveModerador#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_moderador
-    QUOTA 0 ON USERS;
-
-CREATE USER MJV_ADMINCLUB_DEMO IDENTIFIED BY "CambiarClaveAdminClub#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_admin_club
-    QUOTA 0 ON USERS;
-
-CREATE USER MJV_ADMINOBRAS_DEMO IDENTIFIED BY "CambiarClaveAdminObras#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_admin_obras
-    QUOTA 0 ON USERS;
-
-CREATE USER MJV_COORDINADOR_DEMO IDENTIFIED BY "CambiarClaveCoordinador#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_coordinador
-    QUOTA 0 ON USERS;
-
-GRANT CREATE SESSION TO MJV_LECTOR_DEMO;
-GRANT CREATE SESSION TO MJV_MODERADOR_DEMO;
-GRANT CREATE SESSION TO MJV_ADMINCLUB_DEMO;
-GRANT CREATE SESSION TO MJV_ADMINOBRAS_DEMO;
-GRANT CREATE SESSION TO MJV_COORDINADOR_DEMO;
-
-
--- PARTE 3: ROLES (como DBA). Admin_Obras y Coordinador son hermanos de
--- Admin_Club, ninguno desciende de otro (todos heredan solo de Lector).
+-- PARTE 2: ROLES (creacion, jerarquia y privilegios de objeto) - diseno completo primero
+-- 2.1 Creacion (como DBA)
 CREATE ROLE MJV_rol_miembro_lector  NOT IDENTIFIED;
 CREATE ROLE MJV_rol_moderador_grupo NOT IDENTIFIED;
 CREATE ROLE MJV_rol_admin_club      NOT IDENTIFIED;
 CREATE ROLE MJV_rol_admin_obras     NOT IDENTIFIED;
 CREATE ROLE MJV_rol_coordinador     NOT IDENTIFIED;
 
+-- 2.2 Jerarquia (como DBA). Admin_Obras y Coordinador son hermanos de Admin_Club.
 GRANT MJV_rol_miembro_lector  TO MJV_rol_moderador_grupo;
 GRANT MJV_rol_moderador_grupo TO MJV_rol_admin_club;
 GRANT MJV_rol_miembro_lector  TO MJV_rol_admin_obras;
 GRANT MJV_rol_miembro_lector  TO MJV_rol_coordinador;
 
-
--- PARTE 4: PRIVILEGIOS DE OBJETO (como MJV_DEV, dueño de los objetos)
+-- 2.3 Privilegios de objeto (como MJV_DEV, dueño de los objetos)
 -- CONNECT MJV_DEV/<clave_de_MJV_DEV>
 
--- 4.1 MJV_rol_miembro_lector: consulta general + votacion en obras teatrales
+-- 2.3.1 MJV_rol_miembro_lector: consulta general + votacion en obras teatrales
 GRANT SELECT ON MJV_v_catalogo_libros              TO MJV_rol_miembro_lector;
 GRANT SELECT ON MJV_v_ficha_lector                 TO MJV_rol_miembro_lector;
 GRANT SELECT ON MJV_v_ficha_club                   TO MJV_rol_miembro_lector;
@@ -158,7 +120,7 @@ GRANT SELECT ON MJV_elenco                 TO MJV_rol_miembro_lector;
 -- Secuencia usada por el DEFAULT de MJV_voto_publico.id_voto
 GRANT SELECT ON MJV_seq_voto_publico TO MJV_rol_miembro_lector;
 
--- 4.2 MJV_rol_moderador_grupo: agenda/asistencia/cierre de discusion de su grupo
+-- 2.3.2 MJV_rol_moderador_grupo: agenda/asistencia/cierre de discusion de su grupo
 GRANT EXECUTE ON MJV_sp_registrar_asistencia_miembro TO MJV_rol_moderador_grupo;
 GRANT EXECUTE ON MJV_sp_cerrar_discusion_reunion     TO MJV_rol_moderador_grupo;
 GRANT EXECUTE ON MJV_sp_agendar_reunion_mes          TO MJV_rol_moderador_grupo;
@@ -168,7 +130,7 @@ GRANT SELECT ON MJV_vw_moderadores_activos              TO MJV_rol_moderador_gru
 GRANT SELECT ON MJV_v_asistencia_bimestre               TO MJV_rol_moderador_grupo;
 GRANT SELECT ON MJV_v_participacion_mensual_tipo_grupo  TO MJV_rol_moderador_grupo;
 
--- 4.3 MJV_rol_admin_club: inscripcion, splits, pagos, metricas y reportes de club
+-- 2.3.3 MJV_rol_admin_club: inscripcion, splits, pagos, metricas y reportes de club
 GRANT EXECUTE ON MJV_sp_inscribir_miembro        TO MJV_rol_admin_club;
 GRANT EXECUTE ON MJV_sp_retirar_miembro          TO MJV_rol_admin_club;
 GRANT EXECUTE ON MJV_sp_split_grupo              TO MJV_rol_admin_club;
@@ -192,7 +154,7 @@ GRANT SELECT ON MJV_vw_r2_consolidado            TO MJV_rol_admin_club;
 GRANT SELECT ON MJV_vw_r3_consolidado            TO MJV_rol_admin_club;
 GRANT SELECT ON MJV_vw_r4_consolidado            TO MJV_rol_admin_club;
 
--- 4.4 MJV_rol_admin_obras: logistica teatral (elenco, funciones, votos, taquilla)
+-- 2.3.4 MJV_rol_admin_obras: logistica teatral (elenco, funciones, votos, taquilla)
 GRANT SELECT, INSERT, UPDATE, DELETE ON MJV_obra_actuada TO MJV_rol_admin_obras;
 GRANT SELECT, INSERT, UPDATE, DELETE ON MJV_elenco       TO MJV_rol_admin_obras;
 GRANT SELECT, INSERT, UPDATE, DELETE ON MJV_funcion      TO MJV_rol_admin_obras;
@@ -207,7 +169,7 @@ GRANT EXECUTE ON MJV_conversion_monetaria TO MJV_rol_admin_obras;
 
 GRANT SELECT ON MJV_v_obras_presentadas TO MJV_rol_admin_obras;
 
--- 4.5 MJV_rol_coordinador: catalogo maestro (paises, ciudades, instituciones, clubes, libros)
+-- 2.3.5 MJV_rol_coordinador: catalogo maestro (paises, ciudades, instituciones, clubes, libros)
 GRANT SELECT, INSERT, UPDATE ON MJV_pais        TO MJV_rol_coordinador;
 GRANT SELECT, INSERT, UPDATE ON MJV_ciudad      TO MJV_rol_coordinador;
 GRANT SELECT, INSERT, UPDATE ON MJV_institucion TO MJV_rol_coordinador;
@@ -224,17 +186,59 @@ GRANT SELECT ON MJV_v_catalogo_libros TO MJV_rol_coordinador;
 GRANT SELECT ON MJV_v_ficha_club      TO MJV_rol_coordinador;
 
 
--- PARTE 5: ASIGNACION DE ROLES A CUENTAS (como DBA)
-GRANT MJV_rol_miembro_lector  TO MJV_LECTOR_DEMO;
-GRANT MJV_rol_moderador_grupo TO MJV_MODERADOR_DEMO;
-GRANT MJV_rol_admin_club      TO MJV_ADMINCLUB_DEMO;
-GRANT MJV_rol_admin_obras     TO MJV_ADMINOBRAS_DEMO;
-GRANT MJV_rol_coordinador     TO MJV_COORDINADOR_DEMO;
+-- PARTE 3: ALTA DE CUENTAS, UNA POR UNA (como DBA)
+-- Cada bloque: CREATE USER + GRANT rol + GRANT CREATE SESSION + DEFAULT ROLE.
+-- QUOTA 0: los INSERT de usuarios finales caen en tablas propiedad de
+-- MJV_DEV, la cuota se descuenta del dueño de la tabla, no de quien inserta.
 
-ALTER USER MJV_LECTOR_DEMO      DEFAULT ROLE MJV_rol_miembro_lector;
-ALTER USER MJV_MODERADOR_DEMO   DEFAULT ROLE MJV_rol_moderador_grupo;
-ALTER USER MJV_ADMINCLUB_DEMO   DEFAULT ROLE MJV_rol_admin_club;
-ALTER USER MJV_ADMINOBRAS_DEMO  DEFAULT ROLE MJV_rol_admin_obras;
+-- Cuenta para un lector/miembro de club
+CREATE USER MJV_LECTOR_DEMO IDENTIFIED BY "CambiarClaveLector#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_lector
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_miembro_lector TO MJV_LECTOR_DEMO;
+GRANT CREATE SESSION         TO MJV_LECTOR_DEMO;
+ALTER USER MJV_LECTOR_DEMO DEFAULT ROLE MJV_rol_miembro_lector;
+
+-- Cuenta para un moderador de grupo de lectura
+CREATE USER MJV_MODERADOR_DEMO IDENTIFIED BY "CambiarClaveModerador#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_moderador
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_moderador_grupo TO MJV_MODERADOR_DEMO;
+GRANT CREATE SESSION          TO MJV_MODERADOR_DEMO;
+ALTER USER MJV_MODERADOR_DEMO DEFAULT ROLE MJV_rol_moderador_grupo;
+
+-- Cuenta para un administrador operativo de club
+CREATE USER MJV_ADMINCLUB_DEMO IDENTIFIED BY "CambiarClaveAdminClub#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_admin_club
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_admin_club      TO MJV_ADMINCLUB_DEMO;
+GRANT CREATE SESSION          TO MJV_ADMINCLUB_DEMO;
+ALTER USER MJV_ADMINCLUB_DEMO DEFAULT ROLE MJV_rol_admin_club;
+
+-- Cuenta para un administrador de obras teatrales
+CREATE USER MJV_ADMINOBRAS_DEMO IDENTIFIED BY "CambiarClaveAdminObras#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_admin_obras
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_admin_obras      TO MJV_ADMINOBRAS_DEMO;
+GRANT CREATE SESSION           TO MJV_ADMINOBRAS_DEMO;
+ALTER USER MJV_ADMINOBRAS_DEMO DEFAULT ROLE MJV_rol_admin_obras;
+
+-- Cuenta para un coordinador de catalogo maestro
+CREATE USER MJV_COORDINADOR_DEMO IDENTIFIED BY "CambiarClaveCoordinador#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_coordinador
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_coordinador       TO MJV_COORDINADOR_DEMO;
+GRANT CREATE SESSION            TO MJV_COORDINADOR_DEMO;
 ALTER USER MJV_COORDINADOR_DEMO DEFAULT ROLE MJV_rol_coordinador;
 
 -- Cuenta con doble responsabilidad (Admin_Club + Admin_Obras): otorgar ambos roles.
@@ -243,7 +247,7 @@ ALTER USER MJV_COORDINADOR_DEMO DEFAULT ROLE MJV_rol_coordinador;
 --   ALTER USER MJV_ADMINCLUB_DEMO DEFAULT ROLE ALL;
 
 
--- PARTE 6: AUDITORIA TEMPORAL SOBRE DML/EXECUTE CRITICOS (como DBA)
+-- PARTE 4: AUDITORIA TEMPORAL SOBRE DML/EXECUTE CRITICOS (como DBA)
 AUDIT INSERT, UPDATE, DELETE ON MJV_DEV.MJV_pago_membresia BY ACCESS;
 AUDIT INSERT, UPDATE, DELETE ON MJV_DEV.MJV_historia_membresia BY ACCESS;
 AUDIT INSERT, UPDATE, DELETE ON MJV_DEV.MJV_g_lec BY ACCESS;
@@ -268,7 +272,7 @@ AUDIT ROLE WHENEVER SUCCESSFUL;
 -- SELECT * FROM DBA_AUDIT_TRAIL   WHERE DB_USER LIKE 'MJV_%_DEMO';
 
 
--- PARTE 7: REVERSION (no ejecutar junto con lo anterior; solo para desmontar)
+-- PARTE 5: REVERSION (no ejecutar junto con lo anterior; solo para desmontar)
 /*
 NOAUDIT INSERT, UPDATE, DELETE ON MJV_DEV.MJV_pago_membresia;
 NOAUDIT INSERT, UPDATE, DELETE ON MJV_DEV.MJV_historia_membresia;
@@ -309,7 +313,7 @@ DROP PROFILE MJV_perfil_coordinador CASCADE;
 */
 
 
--- PARTE 8: VERIFICACION CONTRA EL DICCIONARIO DE DATOS
+-- PARTE 6: VERIFICACION CONTRA EL DICCIONARIO DE DATOS
 -- SELECT * FROM ROLE_ROLE_PRIVS WHERE ROLE LIKE 'MJV_ROL%';
 -- SELECT * FROM ROLE_TAB_PRIVS WHERE ROLE LIKE 'MJV_ROL%' ORDER BY ROLE, TABLE_NAME;
 -- SELECT * FROM ROLE_TAB_PRIVS WHERE ROLE LIKE 'MJV_ROL%' AND COLUMN_NAME IS NOT NULL;

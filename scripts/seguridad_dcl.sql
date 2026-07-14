@@ -12,31 +12,34 @@
 --   2. complemento_script_final.sql  (funciones, SPs, vistas operativas, brechas)
 --   3. seguridad_dcl.sql             (ESTE ARCHIVO - modelo DAC de usuarios finales)
 --
+-- Dinámica del archivo: primero se deja todo el "diseño" listo (perfiles,
+-- roles y sus privilegios) y luego, por cada persona que se incorpora al
+-- negocio, se ejecuta un único bloque con su CREATE USER + GRANT de rol +
+-- CREATE SESSION + DEFAULT ROLE — igual que se haría en la vida real al
+-- dar de alta a alguien: el trabajo de diseño ya existe, y el onboarding de
+-- cada cuenta es un bloque autocontenido que se corre de una sola vez.
+--
 -- Quién ejecuta qué:
---   - PARTE 1 (perfiles) y PARTE 2 (cuentas + CREATE SESSION): requieren
---     privilegios de sistema (CREATE PROFILE, CREATE USER). Se ejecutan
---     conectado como DBA (p.ej. SYSTEM o la cuenta DBA del proyecto).
---   - PARTE 3 (CREATE ROLE): requiere el privilegio de sistema CREATE ROLE.
+--   - PARTE 1 (perfiles): requiere el privilegio de sistema CREATE PROFILE.
 --     Se ejecuta como DBA.
---   - PARTE 4 (GRANT de privilegios de OBJETO sobre vistas/programas hacia
---     los roles): solo el DUEÑO de cada objeto puede otorgarlos. Se ejecuta
---     conectado como MJV_DEV.
---   - PARTE 5 (GRANT rol -> cuenta): requiere tener el rol con ADMIN OPTION
---     o ser DBA. Se ejecuta como DBA.
---   - PARTE 6 (AUDIT): requiere privilegio de sistema AUDIT ANY / AUDIT
+--   - PARTE 2 (CREATE ROLE + GRANT de privilegios de OBJETO): crear el rol
+--     requiere CREATE ROLE (como DBA); otorgarle privilegios de objeto solo
+--     puede hacerlo el DUEÑO de cada objeto (conectado como MJV_DEV).
+--   - PARTE 3 (cuenta por persona: CREATE USER + GRANT rol + CREATE SESSION
+--     + DEFAULT ROLE): requiere CREATE USER y tener el rol con ADMIN OPTION
+--     (o ser DBA). Se ejecuta como DBA.
+--   - PARTE 4 (AUDIT): requiere privilegio de sistema AUDIT ANY / AUDIT
 --     SYSTEM. Se ejecuta como DBA.
 --
 -- Estructura del archivo:
 --   PARTE 1: Perfiles (PROFILE) para las 5 cuentas de usuario final
---   PARTE 2: Cuentas de Usuario Final + único privilegio de sistema (CREATE SESSION)
---   PARTE 3: Roles de negocio - Miembro_Lector -> Moderador_Grupo -> Administrador_Club
---            (cadena jerárquica de club/reuniones), y Administrador_Obras y
---            Coordinador_Datos como roles hermanos independientes
---   PARTE 4: Privilegios de OBJETO otorgados por MJV_DEV (dueño) a cada rol
---   PARTE 5: Asignación de roles a las cuentas de usuario final
---   PARTE 6: Auditoría temporal sobre DML/EXECUTE críticos
---   PARTE 7: Script de reversión (REVOKE / DROP) para mantenimiento
---   PARTE 8: Notas de verificación contra el diccionario de datos
+--   PARTE 2: Roles de negocio — creación, jerarquía y TODOS sus privilegios
+--            de objeto (el diseño completo, antes de dar de alta a nadie)
+--   PARTE 3: Alta de cuentas de usuario final, una por una, con su rol ya
+--            asignado en el mismo bloque
+--   PARTE 4: Auditoría temporal sobre DML/EXECUTE críticos
+--   PARTE 5: Script de reversión (REVOKE / DROP) para mantenimiento
+--   PARTE 6: Notas de verificación contra el diccionario de datos
 --
 -- Diseño de separación de responsabilidades (5 roles = 3 procesos de negocio
 -- del enunciado + el mantenimiento de catálogo maestro + el nivel base de
@@ -158,75 +161,20 @@ CREATE PROFILE MJV_perfil_lector LIMIT
 
 
 -- #############################################################################
--- PARTE 2: CUENTAS DE USUARIO FINAL
--- Toda cuenta debe tener clave obligatoria (IDENTIFIED BY). El único
--- privilegio de SISTEMA que reciben es CREATE SESSION: sin él la cuenta no
--- puede ni siquiera conectarse, y con él por sí solo tampoco puede hacer
--- nada más hasta que el dueño de los objetos (MJV_DEV) le otorgue, vía rol,
--- los privilegios de OBJETO (SELECT/INSERT/UPDATE/EXECUTE) que necesite.
--- Se ejecuta como DBA.
--- #############################################################################
-
--- QUOTA 0 en las 4 cuentas: correcto y suficiente en este diseño. Todas las
--- filas que insertan los usuarios finales (voto_publico, obra_actuada,
--- elenco, funcion, etc.) viven en tablas propiedad de MJV_DEV; el espacio
--- ocupado por un INSERT se descuenta de la cuota del DUEÑO de la tabla, no
--- de quien ejecuta el INSERT. Los usuarios finales nunca son propietarios
--- de segmentos propios (no tienen CREATE TABLE), así que no necesitan cuota.
-CREATE USER MJV_LECTOR_DEMO IDENTIFIED BY "CambiarClaveLector#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_lector
-    QUOTA 0 ON USERS;              -- no crea objetos propios
-
-CREATE USER MJV_MODERADOR_DEMO IDENTIFIED BY "CambiarClaveModerador#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_moderador
-    QUOTA 0 ON USERS;
-
-CREATE USER MJV_ADMINCLUB_DEMO IDENTIFIED BY "CambiarClaveAdminClub#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_admin_club
-    QUOTA 0 ON USERS;
-
-CREATE USER MJV_ADMINOBRAS_DEMO IDENTIFIED BY "CambiarClaveAdminObras#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_admin_obras
-    QUOTA 0 ON USERS;
-
-CREATE USER MJV_COORDINADOR_DEMO IDENTIFIED BY "CambiarClaveCoordinador#2026"
-    DEFAULT TABLESPACE USERS
-    TEMPORARY TABLESPACE TEMP
-    PROFILE MJV_perfil_coordinador
-    QUOTA 0 ON USERS;
-
--- Único privilegio de SISTEMA que reciben los usuarios finales.
-GRANT CREATE SESSION TO MJV_LECTOR_DEMO;
-GRANT CREATE SESSION TO MJV_MODERADOR_DEMO;
-GRANT CREATE SESSION TO MJV_ADMINCLUB_DEMO;
-GRANT CREATE SESSION TO MJV_ADMINOBRAS_DEMO;
-GRANT CREATE SESSION TO MJV_COORDINADOR_DEMO;
-
-
--- #############################################################################
--- PARTE 3: ROLES DE NEGOCIO JERARQUICOS
+-- PARTE 2: ROLES DE NEGOCIO — creación, jerarquía y privilegios de objeto
 -- Los privilegios no se otorgan cuenta por cuenta sino agrupados por rol
--- lógico, para facilitar el mantenimiento (si cambia una regla de negocio,
--- se ajusta el rol una sola vez y todas las cuentas que lo tienen quedan
--- actualizadas automáticamente).
--- Se ejecuta como DBA. Requiere el privilegio de sistema CREATE ROLE.
+-- lógico: primero se deja todo el diseño de seguridad completo y funcional,
+-- y solo después (PARTE 3) se dan de alta las cuentas concretas.
 -- #############################################################################
 
+-- --- 2.1 Creación de los roles (como DBA; requiere CREATE ROLE) ------------
 CREATE ROLE MJV_rol_miembro_lector  NOT IDENTIFIED;
 CREATE ROLE MJV_rol_moderador_grupo NOT IDENTIFIED;
 CREATE ROLE MJV_rol_admin_club      NOT IDENTIFIED;
 CREATE ROLE MJV_rol_admin_obras     NOT IDENTIFIED;
 CREATE ROLE MJV_rol_coordinador     NOT IDENTIFIED;
 
--- Jerarquía de negocio (Administración de Clubes / Reuniones):
+-- --- 2.2 Jerarquía de roles (como DBA) --------------------------------------
 -- Moderador_Grupo hereda todo lo de Miembro_Lector, y Administrador_Club
 -- hereda todo lo de Moderador_Grupo (y por transitividad de Miembro_Lector).
 -- Un solo GRANT rol->rol basta para propagar accesos.
@@ -243,18 +191,14 @@ GRANT MJV_rol_moderador_grupo TO MJV_rol_admin_club;
 GRANT MJV_rol_miembro_lector  TO MJV_rol_admin_obras;
 GRANT MJV_rol_miembro_lector  TO MJV_rol_coordinador;
 
-
--- #############################################################################
--- PARTE 4: PRIVILEGIOS DE OBJETO OTORGADOS POR EL DESARROLLADOR (MJV_DEV) A
--- CADA ROL. Por defecto solo el dueño de un objeto puede otorgar privilegios
--- sobre él; MJV_DEV es dueña de todas las tablas/vistas/programas MJV_*.
--- A PARTIR DE AQUI, CONECTAR COMO MJV_DEV.
--- #############################################################################
+-- --- 2.3 Privilegios de objeto (conectado como MJV_DEV, dueño de todo) -----
+-- Por defecto solo el dueño de un objeto puede otorgar privilegios sobre él;
+-- MJV_DEV es dueña de todas las tablas/vistas/programas MJV_*.
 
 -- CONNECT MJV_DEV/<clave_de_MJV_DEV>
 
 -- =============================================================================
--- 4.1 ROL: MJV_rol_miembro_lector  (Nivel Básico)
+-- 2.3.1 ROL: MJV_rol_miembro_lector  (Nivel Básico)
 --   - SELECT sobre vistas de su perfil, listado de obras analizadas y clubes.
 --   - INSERT/UPDATE únicamente habilitados para:
 --       a) votar por actores en las obras teatrales (MJV_voto_publico,
@@ -263,7 +207,7 @@ GRANT MJV_rol_miembro_lector  TO MJV_rol_coordinador;
 --       b) aportar su registro individual para la valoración final del
 --          libro (1-5), la cual el enunciado indica que se "acuerda entre
 --          todos los lectores del grupo" y se consolida/cierra por el
---          Moderador vía MJV_sp_cerrar_discusion_reunion (ver rol 2).
+--          Moderador vía MJV_sp_cerrar_discusion_reunion (ver rol 2.3.2).
 -- =============================================================================
 
 -- --- Lectura de vistas de catálogo / perfil / clubes -----------------------
@@ -297,8 +241,8 @@ GRANT SELECT ON MJV_seq_voto_publico TO MJV_rol_miembro_lector;
 
 
 -- =============================================================================
--- 4.2 ROL: MJV_rol_moderador_grupo  (Nivel Medio)
---   Hereda MJV_rol_miembro_lector (ya asignado en PARTE 3).
+-- 2.3.2 ROL: MJV_rol_moderador_grupo  (Nivel Medio)
+--   Hereda MJV_rol_miembro_lector (ya asignado en 2.2).
 --   Añade permisos de escritura para:
 --     a) registrar la asistencia en las reuniones que modera
 --        -> EXECUTE sobre MJV_sp_registrar_asistencia_miembro
@@ -321,7 +265,7 @@ GRANT SELECT ON MJV_v_participacion_mensual_tipo_grupo  TO MJV_rol_moderador_gru
 
 
 -- =============================================================================
--- 4.3 ROL: MJV_rol_admin_club  (Nivel Operativo Alto — Administración de Clubes)
+-- 2.3.3 ROL: MJV_rol_admin_club  (Nivel Operativo Alto — Administración de Clubes)
 --   Hereda MJV_rol_moderador_grupo (y transitivamente Miembro_Lector).
 --   Añade:
 --     a) EXECUTE sobre los procedimientos de transacciones complejas:
@@ -330,7 +274,7 @@ GRANT SELECT ON MJV_v_participacion_mensual_tipo_grupo  TO MJV_rol_moderador_gru
 --     b) EXECUTE sobre funciones de cálculo de métricas financieras y de
 --        crecimiento de los clubes.
 --   NOTA: la logística teatral (elencos, funciones, taquilla) NO vive aquí;
---   es responsabilidad exclusiva de MJV_rol_admin_obras (sección 4.4), un
+--   es responsabilidad exclusiva de MJV_rol_admin_obras (sección 2.3.4), un
 --   rol hermano independiente — ver justificación al inicio del archivo.
 -- =============================================================================
 
@@ -362,7 +306,7 @@ GRANT SELECT ON MJV_vw_r4_consolidado            TO MJV_rol_admin_club;
 
 
 -- =============================================================================
--- 4.4 ROL: MJV_rol_admin_obras  (Nivel Operativo Alto — Planificación y
+-- 2.3.4 ROL: MJV_rol_admin_obras  (Nivel Operativo Alto — Planificación y
 --   Ejecución de Obras Actuadas, Rúbrica 3)
 --   Hereda MJV_rol_miembro_lector directamente (rol HERMANO de admin_club,
 --   no desciende de él ni de moderador_grupo).
@@ -384,7 +328,7 @@ GRANT SELECT, UPDATE, DELETE ON MJV_mejor_actor          TO MJV_rol_admin_obras;
 
 -- --- Secuencias usadas por los INSERT anteriores ---------------------------
 -- MJV_obra_actuada.id_obra_act y MJV_funcion.id_funcion usan DEFAULT
--- ...NEXTVAL (resuelto con privilegios del dueño MJV_DEV, igual que en 4.1).
+-- ...NEXTVAL (resuelto con privilegios del dueño MJV_DEV, igual que en 2.3.1).
 -- MJV_elenco y MJV_mejor_actor no usan secuencia (PK compuesta manual).
 GRANT SELECT ON MJV_seq_obra_actuada TO MJV_rol_admin_obras;
 GRANT SELECT ON MJV_seq_funcion      TO MJV_rol_admin_obras;
@@ -401,7 +345,7 @@ GRANT SELECT ON MJV_v_obras_presentadas TO MJV_rol_admin_obras;
 
 
 -- =============================================================================
--- 4.5 ROL: MJV_rol_coordinador  (Mantenimiento de Catálogo Maestro)
+-- 2.3.5 ROL: MJV_rol_coordinador  (Mantenimiento de Catálogo Maestro)
 --   Hereda MJV_rol_miembro_lector directamente (rol HERMANO de admin_club y
 --   admin_obras). Sin este rol, ninguna cuenta de usuario final podría dar
 --   de alta un país, ciudad, institución, club o libro nuevo — solo MJV_DEV,
@@ -428,7 +372,7 @@ GRANT SELECT, INSERT, UPDATE ON MJV_libro       TO MJV_rol_coordinador;
 
 -- --- Secuencias usadas por los INSERT anteriores ---------------------------
 -- MJV_pais, MJV_ciudad, MJV_institucion y MJV_club usan DEFAULT ...NEXTVAL
--- (resuelto con privilegios del dueño MJV_DEV, igual que en 4.1 y 4.4).
+-- (resuelto con privilegios del dueño MJV_DEV, igual que en 2.3.1 y 2.3.4).
 -- MJV_libro usa isbn como PK natural: no requiere secuencia.
 -- MJV_asociado usa PK compuesta manual (id_club_izq, id_club_der): tampoco.
 GRANT SELECT ON MJV_seq_pais        TO MJV_rol_coordinador;
@@ -441,23 +385,68 @@ GRANT SELECT ON MJV_v_ficha_club      TO MJV_rol_coordinador;
 
 
 -- #############################################################################
--- PARTE 5: ASIGNACION DE ROLES A LAS CUENTAS DE USUARIO FINAL
--- Se ejecuta como DBA.
+-- PARTE 3: ALTA DE CUENTAS DE USUARIO FINAL (una por una)
+-- Con los roles ya diseñados y cargados de privilegios (PARTE 2), cada
+-- cuenta nueva es un bloque autocontenido: CREATE USER, GRANT del rol de
+-- negocio, GRANT CREATE SESSION (único privilegio de SISTEMA que recibe un
+-- usuario final) y ALTER USER ... DEFAULT ROLE. Se ejecuta como DBA.
+--
+-- QUOTA 0 en las 5 cuentas: correcto y suficiente en este diseño. Todas las
+-- filas que insertan los usuarios finales (voto_publico, obra_actuada,
+-- club, libro, etc.) viven en tablas propiedad de MJV_DEV; el espacio
+-- ocupado por un INSERT se descuenta de la cuota del DUEÑO de la tabla, no
+-- de quien ejecuta el INSERT. Los usuarios finales nunca son propietarios
+-- de segmentos propios (no tienen CREATE TABLE), así que no necesitan cuota.
 -- #############################################################################
 
-GRANT MJV_rol_miembro_lector  TO MJV_LECTOR_DEMO;
-GRANT MJV_rol_moderador_grupo TO MJV_MODERADOR_DEMO;
-GRANT MJV_rol_admin_club      TO MJV_ADMINCLUB_DEMO;
-GRANT MJV_rol_admin_obras     TO MJV_ADMINOBRAS_DEMO;
-GRANT MJV_rol_coordinador     TO MJV_COORDINADOR_DEMO;
+-- --- Cuenta para un lector/miembro de club ---------------------------------
+CREATE USER MJV_LECTOR_DEMO IDENTIFIED BY "CambiarClaveLector#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_lector
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_miembro_lector TO MJV_LECTOR_DEMO;
+GRANT CREATE SESSION         TO MJV_LECTOR_DEMO;
+ALTER USER MJV_LECTOR_DEMO DEFAULT ROLE MJV_rol_miembro_lector;
 
--- Los roles no quedan activos por defecto en cada sesión salvo que se fije
--- explícitamente; se marcan como DEFAULT ROLE para que la aplicación no
--- tenga que emitir un SET ROLE manual en cada conexión.
-ALTER USER MJV_LECTOR_DEMO      DEFAULT ROLE MJV_rol_miembro_lector;
-ALTER USER MJV_MODERADOR_DEMO   DEFAULT ROLE MJV_rol_moderador_grupo;
-ALTER USER MJV_ADMINCLUB_DEMO   DEFAULT ROLE MJV_rol_admin_club;
-ALTER USER MJV_ADMINOBRAS_DEMO  DEFAULT ROLE MJV_rol_admin_obras;
+-- --- Cuenta para un moderador de grupo de lectura --------------------------
+CREATE USER MJV_MODERADOR_DEMO IDENTIFIED BY "CambiarClaveModerador#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_moderador
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_moderador_grupo TO MJV_MODERADOR_DEMO;
+GRANT CREATE SESSION          TO MJV_MODERADOR_DEMO;
+ALTER USER MJV_MODERADOR_DEMO DEFAULT ROLE MJV_rol_moderador_grupo;
+
+-- --- Cuenta para un administrador operativo de club -------------------------
+CREATE USER MJV_ADMINCLUB_DEMO IDENTIFIED BY "CambiarClaveAdminClub#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_admin_club
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_admin_club     TO MJV_ADMINCLUB_DEMO;
+GRANT CREATE SESSION         TO MJV_ADMINCLUB_DEMO;
+ALTER USER MJV_ADMINCLUB_DEMO DEFAULT ROLE MJV_rol_admin_club;
+
+-- --- Cuenta para un administrador de obras teatrales ------------------------
+CREATE USER MJV_ADMINOBRAS_DEMO IDENTIFIED BY "CambiarClaveAdminObras#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_admin_obras
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_admin_obras     TO MJV_ADMINOBRAS_DEMO;
+GRANT CREATE SESSION          TO MJV_ADMINOBRAS_DEMO;
+ALTER USER MJV_ADMINOBRAS_DEMO DEFAULT ROLE MJV_rol_admin_obras;
+
+-- --- Cuenta para un coordinador de catálogo maestro -------------------------
+CREATE USER MJV_COORDINADOR_DEMO IDENTIFIED BY "CambiarClaveCoordinador#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_coordinador
+    QUOTA 0 ON USERS;
+GRANT MJV_rol_coordinador      TO MJV_COORDINADOR_DEMO;
+GRANT CREATE SESSION           TO MJV_COORDINADOR_DEMO;
 ALTER USER MJV_COORDINADOR_DEMO DEFAULT ROLE MJV_rol_coordinador;
 
 -- Ejemplo de cuenta con doble responsabilidad (Admin_Club + Admin_Obras):
@@ -468,9 +457,9 @@ ALTER USER MJV_COORDINADOR_DEMO DEFAULT ROLE MJV_rol_coordinador;
 
 
 -- #############################################################################
--- PARTE 6: AUDITORIA TEMPORAL SOBRE COMANDOS DML / EXECUTE CRITICOS
+-- PARTE 4: AUDITORIA TEMPORAL SOBRE COMANDOS DML / EXECUTE CRITICOS
 -- Habilitar solo durante ventanas de revisión/entrega; luego usar el
--- NOAUDIT correspondiente (ver PARTE 7). Requiere privilegio de sistema
+-- NOAUDIT correspondiente (ver PARTE 5). Requiere privilegio de sistema
 -- AUDIT SYSTEM. Se ejecuta como DBA.
 -- #############################################################################
 
@@ -518,7 +507,7 @@ AUDIT ROLE WHENEVER SUCCESSFUL;
 
 
 -- #############################################################################
--- PARTE 7: SCRIPT DE REVERSION (mantenimiento / desmontaje del modelo)
+-- PARTE 5: SCRIPT DE REVERSION (mantenimiento / desmontaje del modelo)
 -- No ejecutar junto con las partes anteriores. Usar solo para deshacer el
 -- diseño completo en un entorno de pruebas.
 -- #############################################################################
@@ -569,11 +558,12 @@ DROP PROFILE MJV_perfil_coordinador CASCADE;
 
 
 -- #############################################################################
--- PARTE 8: NOTAS DE VERIFICACION (diccionario de datos)
+-- PARTE 6: NOTAS DE VERIFICACION (diccionario de datos)
 -- #############################################################################
 
 -- Jerarquía de roles otorgados a un rol (herencia Miembro_Lector -> Moderador
--- -> Admin_Club, y Miembro_Lector -> Admin_Obras como rama hermana):
+-- -> Admin_Club, y Miembro_Lector -> Admin_Obras / Coordinador como ramas
+-- hermanas):
 -- SELECT * FROM ROLE_ROLE_PRIVS WHERE ROLE LIKE 'MJV_ROL%';
 
 -- Privilegios de objeto por rol (equivalente a user_tab_privs, pero para roles):
