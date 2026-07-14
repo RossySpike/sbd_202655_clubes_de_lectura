@@ -27,19 +27,20 @@
 --     SYSTEM. Se ejecuta como DBA.
 --
 -- Estructura del archivo:
---   PARTE 1: Perfiles (PROFILE) para las 4 cuentas de usuario final
+--   PARTE 1: Perfiles (PROFILE) para las 5 cuentas de usuario final
 --   PARTE 2: Cuentas de Usuario Final + único privilegio de sistema (CREATE SESSION)
 --   PARTE 3: Roles de negocio - Miembro_Lector -> Moderador_Grupo -> Administrador_Club
---            (cadena jerárquica de club/reuniones) y Administrador_Obras (rol
---            hermano independiente para el proceso de negocio de Obras Actuadas)
+--            (cadena jerárquica de club/reuniones), y Administrador_Obras y
+--            Coordinador_Datos como roles hermanos independientes
 --   PARTE 4: Privilegios de OBJETO otorgados por MJV_DEV (dueño) a cada rol
 --   PARTE 5: Asignación de roles a las cuentas de usuario final
 --   PARTE 6: Auditoría temporal sobre DML/EXECUTE críticos
 --   PARTE 7: Script de reversión (REVOKE / DROP) para mantenimiento
 --   PARTE 8: Notas de verificación contra el diccionario de datos
 --
--- Diseño de separación de responsabilidades (4 roles = 3 procesos de negocio
--- del enunciado + el nivel base de lector):
+-- Diseño de separación de responsabilidades (5 roles = 3 procesos de negocio
+-- del enunciado + el mantenimiento de catálogo maestro + el nivel base de
+-- lector):
 --   Miembro_Lector      -> consumo básico + votación en obras (todo lector)
 --   Moderador_Grupo      -> hereda Lector + Administración de Reuniones
 --   Administrador_Club   -> hereda Moderador + Administración de Clubes
@@ -49,8 +50,16 @@
 --                            un proceso de negocio propio con su propio
 --                            responsable operativo (logística teatral),
 --                            distinto de quien administra membresías/grupos.
---                            Una cuenta que deba hacer ambas cosas recibe
---                            los dos roles con un GRANT adicional.
+--   Coordinador_Datos    -> hereda Lector (rol HERMANO de Admin_Club y
+--                            Admin_Obras). Mantiene el catálogo maestro que
+--                            ningún otro rol puede tocar: países, ciudades,
+--                            instituciones, alta de clubes nuevos y alta de
+--                            libros nuevos. Sin este rol, ninguna cuenta de
+--                            usuario final podría registrar un libro o un
+--                            club nuevo — solo MJV_DEV, que no debería hacer
+--                            mantenimiento operativo de datos de negocio.
+--   Una cuenta que deba cubrir varias responsabilidades recibe varios roles
+--   con un GRANT adicional (son compatibles entre sí, todos hermanos).
 -- =============================================================================
 
 
@@ -113,6 +122,24 @@ CREATE PROFILE MJV_perfil_admin_obras LIMIT
     PASSWORD_LOCK_TIME         1
     PASSWORD_VERIFY_FUNCTION   ORA12C_VERIFY_FUNCTION;
 
+-- Perfil para el Coordinador_Datos: mantiene el catálogo maestro (países,
+-- ciudades, instituciones, clubes, libros). Trabajo administrativo poco
+-- frecuente pero de sesiones más largas (carga de datos por lote), similar
+-- en peso a Admin_Obras.
+CREATE PROFILE MJV_perfil_coordinador LIMIT
+    SESSIONS_PER_USER          2
+    CPU_PER_SESSION            12000
+    CPU_PER_CALL               3000
+    CONNECT_TIME               360
+    IDLE_TIME                  30
+    FAILED_LOGIN_ATTEMPTS       5
+    PASSWORD_LIFE_TIME         60
+    PASSWORD_GRACE_TIME        7
+    PASSWORD_REUSE_TIME        365
+    PASSWORD_REUSE_MAX         5
+    PASSWORD_LOCK_TIME         1
+    PASSWORD_VERIFY_FUNCTION   ORA12C_VERIFY_FUNCTION;
+
 -- Perfil para el Miembro_Lector (nivel básico): el más restrictivo, una sola
 -- sesión, CPU mínima, ideal para consultas puntuales y votaciones ocasionales.
 CREATE PROFILE MJV_perfil_lector LIMIT
@@ -140,6 +167,12 @@ CREATE PROFILE MJV_perfil_lector LIMIT
 -- Se ejecuta como DBA.
 -- #############################################################################
 
+-- QUOTA 0 en las 4 cuentas: correcto y suficiente en este diseño. Todas las
+-- filas que insertan los usuarios finales (voto_publico, obra_actuada,
+-- elenco, funcion, etc.) viven en tablas propiedad de MJV_DEV; el espacio
+-- ocupado por un INSERT se descuenta de la cuota del DUEÑO de la tabla, no
+-- de quien ejecuta el INSERT. Los usuarios finales nunca son propietarios
+-- de segmentos propios (no tienen CREATE TABLE), así que no necesitan cuota.
 CREATE USER MJV_LECTOR_DEMO IDENTIFIED BY "CambiarClaveLector#2026"
     DEFAULT TABLESPACE USERS
     TEMPORARY TABLESPACE TEMP
@@ -164,11 +197,18 @@ CREATE USER MJV_ADMINOBRAS_DEMO IDENTIFIED BY "CambiarClaveAdminObras#2026"
     PROFILE MJV_perfil_admin_obras
     QUOTA 0 ON USERS;
 
+CREATE USER MJV_COORDINADOR_DEMO IDENTIFIED BY "CambiarClaveCoordinador#2026"
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    PROFILE MJV_perfil_coordinador
+    QUOTA 0 ON USERS;
+
 -- Único privilegio de SISTEMA que reciben los usuarios finales.
 GRANT CREATE SESSION TO MJV_LECTOR_DEMO;
 GRANT CREATE SESSION TO MJV_MODERADOR_DEMO;
 GRANT CREATE SESSION TO MJV_ADMINCLUB_DEMO;
 GRANT CREATE SESSION TO MJV_ADMINOBRAS_DEMO;
+GRANT CREATE SESSION TO MJV_COORDINADOR_DEMO;
 
 
 -- #############################################################################
@@ -184,6 +224,7 @@ CREATE ROLE MJV_rol_miembro_lector  NOT IDENTIFIED;
 CREATE ROLE MJV_rol_moderador_grupo NOT IDENTIFIED;
 CREATE ROLE MJV_rol_admin_club      NOT IDENTIFIED;
 CREATE ROLE MJV_rol_admin_obras     NOT IDENTIFIED;
+CREATE ROLE MJV_rol_coordinador     NOT IDENTIFIED;
 
 -- Jerarquía de negocio (Administración de Clubes / Reuniones):
 -- Moderador_Grupo hereda todo lo de Miembro_Lector, y Administrador_Club
@@ -192,11 +233,15 @@ CREATE ROLE MJV_rol_admin_obras     NOT IDENTIFIED;
 GRANT MJV_rol_miembro_lector  TO MJV_rol_moderador_grupo;
 GRANT MJV_rol_moderador_grupo TO MJV_rol_admin_club;
 
--- Administrador_Obras es un rol HERMANO de Administrador_Club: ambos
--- descienden de Miembro_Lector, pero ninguno hereda del otro. Modela el
--- proceso de negocio independiente de "Planificación y Ejecución de Obras
--- Actuadas" (Rúbrica 3) sin acoplarlo a la administración de clubes.
+-- Administrador_Obras y Coordinador_Datos son roles HERMANOS de
+-- Administrador_Club: los tres descienden de Miembro_Lector, pero ninguno
+-- hereda de los otros. Administrador_Obras modela el proceso de negocio
+-- independiente de "Planificación y Ejecución de Obras Actuadas" (Rúbrica
+-- 3); Coordinador_Datos modela el mantenimiento del catálogo maestro
+-- (países, ciudades, instituciones, clubes, libros), que no pertenece a
+-- ningún proceso operativo específico sino que los precede a todos.
 GRANT MJV_rol_miembro_lector  TO MJV_rol_admin_obras;
+GRANT MJV_rol_miembro_lector  TO MJV_rol_coordinador;
 
 
 -- #############################################################################
@@ -240,6 +285,15 @@ GRANT SELECT, INSERT ON MJV_mejor_actor    TO MJV_rol_miembro_lector;
 GRANT SELECT ON MJV_obra_actuada           TO MJV_rol_miembro_lector;
 GRANT SELECT ON MJV_funcion                TO MJV_rol_miembro_lector;
 GRANT SELECT ON MJV_elenco                 TO MJV_rol_miembro_lector;
+
+-- --- Secuencia usada por el INSERT anterior --------------------------------
+-- MJV_voto_publico.id_voto usa DEFAULT MJV_seq_voto_publico.NEXTVAL: al ser
+-- un DEFAULT de columna, Oracle lo resuelve con los privilegios del DUEÑO de
+-- la tabla (MJV_DEV), por lo que el rol podría insertar sin este GRANT. Se
+-- otorga de todas formas por buena práctica: si la aplicación necesita leer
+-- o referenciar el próximo valor explícitamente (p.ej. para mostrarlo antes
+-- de confirmar el voto), el privilegio ya está disponible.
+GRANT SELECT ON MJV_seq_voto_publico TO MJV_rol_miembro_lector;
 
 
 -- =============================================================================
@@ -328,6 +382,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON MJV_funcion      TO MJV_rol_admin_obras;
 GRANT SELECT, UPDATE, DELETE ON MJV_voto_publico         TO MJV_rol_admin_obras;
 GRANT SELECT, UPDATE, DELETE ON MJV_mejor_actor          TO MJV_rol_admin_obras;
 
+-- --- Secuencias usadas por los INSERT anteriores ---------------------------
+-- MJV_obra_actuada.id_obra_act y MJV_funcion.id_funcion usan DEFAULT
+-- ...NEXTVAL (resuelto con privilegios del dueño MJV_DEV, igual que en 4.1).
+-- MJV_elenco y MJV_mejor_actor no usan secuencia (PK compuesta manual).
+GRANT SELECT ON MJV_seq_obra_actuada TO MJV_rol_admin_obras;
+GRANT SELECT ON MJV_seq_funcion      TO MJV_rol_admin_obras;
+
 -- --- Métrica compartida con Admin_Club (conversión monetaria de taquilla) --
 GRANT EXECUTE ON MJV_conversion_monetaria TO MJV_rol_admin_obras;
 
@@ -339,6 +400,46 @@ GRANT EXECUTE ON MJV_conversion_monetaria TO MJV_rol_admin_obras;
 GRANT SELECT ON MJV_v_obras_presentadas TO MJV_rol_admin_obras;
 
 
+-- =============================================================================
+-- 4.5 ROL: MJV_rol_coordinador  (Mantenimiento de Catálogo Maestro)
+--   Hereda MJV_rol_miembro_lector directamente (rol HERMANO de admin_club y
+--   admin_obras). Sin este rol, ninguna cuenta de usuario final podría dar
+--   de alta un país, ciudad, institución, club o libro nuevo — solo MJV_DEV,
+--   que no debería hacer mantenimiento operativo de datos de negocio.
+--   Responsabilidades exclusivas:
+--     a) SELECT/INSERT/UPDATE sobre el catálogo geográfico e institucional:
+--        países, ciudades, instituciones (no DELETE: estos catálogos son
+--        referenciados por FK desde club/lector y no deben eliminarse en
+--        operación normal, solo corregirse).
+--     b) SELECT/INSERT/UPDATE sobre clubes nuevos/existentes y su relación
+--        de asociación entre clubes (MJV_asociado).
+--     c) SELECT/INSERT/UPDATE sobre el catálogo de libros.
+--   NOTA: no incluye ninguna tabla transaccional (membresías, reuniones,
+--   pagos, obras teatrales) — esas siguen siendo exclusivas de los otros
+--   3 roles operativos.
+-- =============================================================================
+
+GRANT SELECT, INSERT, UPDATE ON MJV_pais        TO MJV_rol_coordinador;
+GRANT SELECT, INSERT, UPDATE ON MJV_ciudad      TO MJV_rol_coordinador;
+GRANT SELECT, INSERT, UPDATE ON MJV_institucion TO MJV_rol_coordinador;
+GRANT SELECT, INSERT, UPDATE ON MJV_club        TO MJV_rol_coordinador;
+GRANT SELECT, INSERT, UPDATE ON MJV_asociado    TO MJV_rol_coordinador;
+GRANT SELECT, INSERT, UPDATE ON MJV_libro       TO MJV_rol_coordinador;
+
+-- --- Secuencias usadas por los INSERT anteriores ---------------------------
+-- MJV_pais, MJV_ciudad, MJV_institucion y MJV_club usan DEFAULT ...NEXTVAL
+-- (resuelto con privilegios del dueño MJV_DEV, igual que en 4.1 y 4.4).
+-- MJV_libro usa isbn como PK natural: no requiere secuencia.
+-- MJV_asociado usa PK compuesta manual (id_club_izq, id_club_der): tampoco.
+GRANT SELECT ON MJV_seq_pais        TO MJV_rol_coordinador;
+GRANT SELECT ON MJV_seq_ciudad      TO MJV_rol_coordinador;
+GRANT SELECT ON MJV_seq_institucion TO MJV_rol_coordinador;
+
+-- --- Vistas de catálogo para verificar antes de insertar/actualizar --------
+GRANT SELECT ON MJV_v_catalogo_libros TO MJV_rol_coordinador;
+GRANT SELECT ON MJV_v_ficha_club      TO MJV_rol_coordinador;
+
+
 -- #############################################################################
 -- PARTE 5: ASIGNACION DE ROLES A LAS CUENTAS DE USUARIO FINAL
 -- Se ejecuta como DBA.
@@ -348,14 +449,16 @@ GRANT MJV_rol_miembro_lector  TO MJV_LECTOR_DEMO;
 GRANT MJV_rol_moderador_grupo TO MJV_MODERADOR_DEMO;
 GRANT MJV_rol_admin_club      TO MJV_ADMINCLUB_DEMO;
 GRANT MJV_rol_admin_obras     TO MJV_ADMINOBRAS_DEMO;
+GRANT MJV_rol_coordinador     TO MJV_COORDINADOR_DEMO;
 
 -- Los roles no quedan activos por defecto en cada sesión salvo que se fije
 -- explícitamente; se marcan como DEFAULT ROLE para que la aplicación no
 -- tenga que emitir un SET ROLE manual en cada conexión.
-ALTER USER MJV_LECTOR_DEMO     DEFAULT ROLE MJV_rol_miembro_lector;
-ALTER USER MJV_MODERADOR_DEMO  DEFAULT ROLE MJV_rol_moderador_grupo;
-ALTER USER MJV_ADMINCLUB_DEMO  DEFAULT ROLE MJV_rol_admin_club;
-ALTER USER MJV_ADMINOBRAS_DEMO DEFAULT ROLE MJV_rol_admin_obras;
+ALTER USER MJV_LECTOR_DEMO      DEFAULT ROLE MJV_rol_miembro_lector;
+ALTER USER MJV_MODERADOR_DEMO   DEFAULT ROLE MJV_rol_moderador_grupo;
+ALTER USER MJV_ADMINCLUB_DEMO   DEFAULT ROLE MJV_rol_admin_club;
+ALTER USER MJV_ADMINOBRAS_DEMO  DEFAULT ROLE MJV_rol_admin_obras;
+ALTER USER MJV_COORDINADOR_DEMO DEFAULT ROLE MJV_rol_coordinador;
 
 -- Ejemplo de cuenta con doble responsabilidad (Admin_Club + Admin_Obras):
 -- al ser roles hermanos, basta con otorgar ambos a la misma cuenta.
@@ -396,6 +499,12 @@ AUDIT EXECUTE ON MJV_DEV.MJV_sp_retirar_miembro           BY ACCESS;
 AUDIT INSERT, UPDATE, DELETE ON MJV_DEV.MJV_obra_actuada BY ACCESS;
 AUDIT INSERT, UPDATE, DELETE ON MJV_DEV.MJV_funcion      BY ACCESS;
 
+-- Auditar el mantenimiento del catálogo maestro (dominio Coordinador_Datos):
+-- altas/cambios de club e institución afectan directamente a qué cuota
+-- cobra un club (cuota_anual) y a la relación de asociación entre clubes.
+AUDIT INSERT, UPDATE ON MJV_DEV.MJV_club        BY ACCESS;
+AUDIT INSERT, UPDATE ON MJV_DEV.MJV_institucion BY ACCESS;
+
 -- Auditar la administración misma de los roles de usuario final (creación,
 -- modificación, asignación) tal como recomienda el material teórico
 -- (AUDIT ROLE WHENEVER SUCCESSFUL).
@@ -425,6 +534,8 @@ NOAUDIT EXECUTE ON MJV_DEV.MJV_sp_registrar_pago_membresia;
 NOAUDIT EXECUTE ON MJV_DEV.MJV_sp_retirar_miembro;
 NOAUDIT INSERT, UPDATE, DELETE ON MJV_DEV.MJV_obra_actuada;
 NOAUDIT INSERT, UPDATE, DELETE ON MJV_DEV.MJV_funcion;
+NOAUDIT INSERT, UPDATE ON MJV_DEV.MJV_club;
+NOAUDIT INSERT, UPDATE ON MJV_DEV.MJV_institucion;
 NOAUDIT ROLE;
 
 -- --- Quitar roles de las cuentas ----------------------------------------
@@ -432,9 +543,11 @@ REVOKE MJV_rol_miembro_lector  FROM MJV_LECTOR_DEMO;
 REVOKE MJV_rol_moderador_grupo FROM MJV_MODERADOR_DEMO;
 REVOKE MJV_rol_admin_club      FROM MJV_ADMINCLUB_DEMO;
 REVOKE MJV_rol_admin_obras     FROM MJV_ADMINOBRAS_DEMO;
+REVOKE MJV_rol_coordinador     FROM MJV_COORDINADOR_DEMO;
 
 -- --- Eliminar roles (arrastra los GRANT de objeto internos) -------------
 DROP ROLE MJV_rol_admin_obras;
+DROP ROLE MJV_rol_coordinador;
 DROP ROLE MJV_rol_admin_club;
 DROP ROLE MJV_rol_moderador_grupo;
 DROP ROLE MJV_rol_miembro_lector;
@@ -444,12 +557,14 @@ DROP USER MJV_LECTOR_DEMO CASCADE;
 DROP USER MJV_MODERADOR_DEMO CASCADE;
 DROP USER MJV_ADMINCLUB_DEMO CASCADE;
 DROP USER MJV_ADMINOBRAS_DEMO CASCADE;
+DROP USER MJV_COORDINADOR_DEMO CASCADE;
 
 -- --- Eliminar perfiles ---------------------------------------------------
 DROP PROFILE MJV_perfil_lector CASCADE;
 DROP PROFILE MJV_perfil_moderador CASCADE;
 DROP PROFILE MJV_perfil_admin_club CASCADE;
 DROP PROFILE MJV_perfil_admin_obras CASCADE;
+DROP PROFILE MJV_perfil_coordinador CASCADE;
 */
 
 
